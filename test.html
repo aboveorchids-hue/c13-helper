@@ -1,0 +1,1275 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>十三支螢幕讀牌測試</title>
+<style>
+/* One column of cards: what to do, the live check, the log to send back */
+:root {
+  --bg: #F1ECE4; --surface: #FFFFFF; --raise: #F8F4EE; --ink: #2A1E14; --muted: #74675A; --line: #DCD2C4;
+  --accent: #D9620F; --accent-ink: #FFFFFF; --good: #23855A; --bad: #B8323F; --warn-ink: #85560F;
+  --font-body: "PingFang TC", "Heiti TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1B1510; --surface: #2A211A; --raise: #332920; --ink: #F4ECE2; --muted: #B9AB9B; --line: #4A3C30;
+    --accent: #FF8A3D; --accent-ink: #1A1206; --good: #5ED39A; --bad: #FF7C88; --warn-ink: #F2B544; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px; }
+.app { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+h1 { margin: 0; font-size: 22px; }
+h2 { margin: 0 0 8px; font-size: 15px; color: var(--muted); letter-spacing: .06em; }
+.lede { margin: 4px 0 0; color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; min-width: 0; }
+ol { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.btn { font: inherit; font-weight: 700; min-height: 48px; padding: 0 18px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.small { min-height: 40px; font-size: 15px; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.support { font-weight: 700; }
+.support.ok { color: var(--good); }
+.support.no { color: var(--bad); }
+.ua { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.status { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.status b { color: var(--ink); }
+.read { margin: 10px 0; font-size: 20px; font-weight: 700; min-height: 1.5em; overflow-wrap: anywhere; }
+.read.miss { color: var(--warn-ink); font-size: 16px; }
+video { display: block; width: 100%; max-height: 240px; object-fit: contain; background: var(--raise); border-radius: 12px; margin: 10px 0; }
+#frameImg { display: block; max-width: 100%; border-radius: 12px; margin-top: 10px; }
+pre { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; background: var(--raise); border-radius: 10px; padding: 10px; }
+textarea { width: 100%; min-height: 160px; margin-top: 10px; font-family: var(--font-mono); font-size: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--raise); color: var(--ink); padding: 8px; }
+.note { font-size: 14px; color: var(--muted); margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <h1>十三支螢幕讀牌測試</h1>
+    <p class="lede">確認這台 iPad 或 Vision Pro 的 Safari，能不能一邊玩、一邊讓網頁看到遊戲畫面並讀出你的牌。這頁只測試，不給建議，也不會把畫面傳到任何地方。</p>
+  </header>
+  <section class="card" id="support"></section>
+  <section class="card">
+    <h2>怎麼測</h2>
+    <ol>
+      <li>先把遊戲打開（Safari 另一個視窗、分割畫面或 App 都可以）。</li>
+      <li>回這頁按「開始分享螢幕」，系統問的時候選分享整個螢幕。</li>
+      <li>去遊戲正常玩一兩手：剛發牌、換牌後、結算清單，各停留幾秒。也試試讓遊戲佔滿整個畫面一陣子。</li>
+      <li>回來按「複製測試結果」，貼給 Claude。</li>
+    </ol>
+    <div class="actions">
+      <button class="btn primary" id="startBtn" type="button">開始分享螢幕</button>
+      <button class="btn" id="stopBtn" type="button" hidden>停止分享</button>
+      <button class="btn" id="copyBtn" type="button">複製測試結果</button>
+    </div>
+    <textarea id="copyBox" hidden readonly aria-label="測試結果"></textarea>
+  </section>
+  <section class="card">
+    <h2>即時狀況</h2>
+    <div class="status" id="status"></div>
+    <div class="read miss" id="read">還沒開始分享</div>
+    <video id="video" playsinline muted autoplay></video>
+    <button class="btn small" id="frameBtn" type="button">顯示目前畫面</button>
+    <p class="note" id="frameNote" hidden>長按圖片可以儲存或拷貝；讀不到牌時，把這張圖也傳給 Claude。</p>
+    <img id="frameImg" alt="目前分享到的畫面" hidden>
+  </section>
+  <section class="card">
+    <h2>紀錄</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+<script>"use strict";
+// 本地讀牌: find the 13-card row in a 神來也 十三支 screenshot, straighten it, cut out each card's rank and suit,
+// and match them against templates made from labelled screenshots. It gives cards only when every check passes;
+// otherwise it says why, and the page reads that screenshot with Claude instead.
+const LocalRead = (() => {
+  const BW = 1000, BH = 160;            // the straightened row: 13 cards, the last one whole
+  const SW = 74;                        // one card strip (a little more than the pitch)
+  const RWIN = [44, 56], SWIN = [34, 34];
+
+  // ---------- helpers ----------
+  function rng(seed) {
+    let a = seed >>> 0;
+    return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  function sorted(arr) { return Float32Array.from(arr).sort(); }
+  function median(arr) { const a = sorted(arr), n = a.length; return n % 2 ? a[(n - 1) >> 1] : (a[n / 2 - 1] + a[n / 2]) / 2; }
+  function percentile(arr, q) {
+    const a = sorted(arr), pos = (a.length - 1) * q / 100, i = Math.floor(pos), t = pos - i;
+    return i + 1 < a.length ? a[i] * (1 - t) + a[i + 1] * t : a[i];
+  }
+  // bilinear sample of a one-channel float image, clamped at the border
+  function bil(A, W, H, x, y) {
+    if (x < 0) x = 0; else if (x > W - 1) x = W - 1;
+    if (y < 0) y = 0; else if (y > H - 1) y = H - 1;
+    const x0 = Math.floor(x), y0 = Math.floor(y), x1 = x0 < W - 1 ? x0 + 1 : x0, y1 = y0 < H - 1 ? y0 + 1 : y0, tx = x - x0, ty = y - y0;
+    const o0 = y0 * W, o1 = y1 * W;
+    return (A[o0 + x0] * (1 - tx) + A[o0 + x1] * tx) * (1 - ty) + (A[o1 + x0] * (1 - tx) + A[o1 + x1] * tx) * ty;
+  }
+  // bilinear sample with zeros outside
+  function bilZero(A, W, H, x, y) {
+    const x0 = Math.floor(x), y0 = Math.floor(y), tx = x - x0, ty = y - y0;
+    const g = (xx, yy) => (xx >= 0 && xx < W && yy >= 0 && yy < H ? A[yy * W + xx] : 0);
+    return (g(x0, y0) * (1 - tx) + g(x0 + 1, y0) * tx) * (1 - ty) + (g(x0, y0 + 1) * (1 - tx) + g(x0 + 1, y0 + 1) * tx) * ty;
+  }
+  function lineFit(px, py) {
+    const n = px.length; let sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let i = 0; i < n; i++) { sx += px[i]; sy += py[i]; sxx += px[i] * px[i]; sxy += px[i] * py[i]; }
+    const m = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+    return { m, c: (sy - m * sx) / n };
+  }
+  // y = c + m x through the most points (within tol), then refitted to those points
+  function ransacLine(X, Y, tol, iters, seed, maxSlope) {
+    const n = X.length; if (n < 10) return null;
+    const r = rng(seed); let best = null;
+    for (let k = 0; k < iters; k++) {
+      const i = Math.floor(r() * n); let j = Math.floor(r() * (n - 1)); if (j >= i) j++;
+      const dx = X[j] - X[i]; if (Math.abs(dx) < 40) continue;
+      const m = (Y[j] - Y[i]) / dx; if (Math.abs(m) > maxSlope) continue;
+      let cnt = 0;
+      for (let q = 0; q < n; q++) if (Math.abs(Y[q] - (Y[i] + m * (X[q] - X[i]))) < tol) cnt++;
+      if (!best || cnt > best.cnt) best = { cnt, m, x: X[i], y: Y[i] };
+    }
+    if (!best) return null;
+    const ix = [], iy = [];
+    for (let q = 0; q < n; q++) if (Math.abs(Y[q] - (best.y + best.m * (X[q] - best.x))) < tol) { ix.push(X[q]); iy.push(Y[q]); }
+    const f = lineFit(ix, iy);
+    return { m: f.m, c: f.c, inl: ix.length / n };
+  }
+  // solve A x = b (n x n, small) by Gaussian elimination with partial pivoting
+  function solve(A, b) {
+    const n = b.length, M = A.map((row, i) => [...row, b[i]]);
+    for (let c = 0; c < n; c++) {
+      let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+      [M[c], M[p]] = [M[p], M[c]];
+      for (let r = 0; r < n; r++) if (r !== c) { const f = M[r][c] / M[c][c]; if (f) for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k]; }
+    }
+    return M.map((row, i) => row[n] / row[i]);
+  }
+  // homography taking the 4 points P (x,y) to Q
+  function homography(P, Q) {
+    const A = [], b = [];
+    for (let i = 0; i < 4; i++) {
+      const [x, y] = P[i], [u, v] = Q[i];
+      A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+      A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+    }
+    const h = solve(A, b);
+    return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+  }
+
+  // homography taking points P to Q, least squares over all of them (coordinates normalised first)
+  function homographyLSQ(P, Q) {
+    const norm = (A) => {
+      let mx = 0, my = 0; for (const [x, y] of A) { mx += x; my += y; } mx /= A.length; my /= A.length;
+      let d = 0; for (const [x, y] of A) d += Math.hypot(x - mx, y - my); d /= A.length; const k = Math.SQRT2 / d;
+      return { k, mx, my, pts: A.map(([x, y]) => [(x - mx) * k, (y - my) * k]) };
+    };
+    const np = norm(P), nq = norm(Q);
+    const N = Array.from({ length: 8 }, () => new Array(8).fill(0)), r = new Array(8).fill(0);
+    const add = (row, val) => { for (let j = 0; j < 8; j++) { r[j] += row[j] * val; for (let k = 0; k < 8; k++) N[j][k] += row[j] * row[k]; } };
+    for (let i = 0; i < P.length; i++) {
+      const [x, y] = np.pts[i], [u, v] = nq.pts[i];
+      add([x, y, 1, 0, 0, 0, -u * x, -u * y], u); add([0, 0, 0, x, y, 1, -v * x, -v * y], v);
+    }
+    const h = solve(N, r), Hn = [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+    // undo the normalisation: H = Tq^-1 Hn Tp
+    const Tp = [np.k, 0, -np.k * np.mx, 0, np.k, -np.k * np.my, 0, 0, 1];
+    const Tqi = [1 / nq.k, 0, nq.mx, 0, 1 / nq.k, nq.my, 0, 0, 1];
+    const mul = (A, B) => { const C = new Array(9).fill(0); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) for (let k = 0; k < 3; k++) C[i * 3 + j] += A[i * 3 + k] * B[k * 3 + j]; return C; };
+    const Hm = mul(Tqi, mul(Hn, Tp));
+    return Hm.map((v) => v / Hm[8]);
+  }
+
+  // ---------- 1. the card row ----------
+  function lumSat(img) {
+    const { width: W, height: H, data } = img, n = W * H;
+    const L = new Float32Array(n), S = new Float32Array(n);
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      const r = data[j], g = data[j + 1], b = data[j + 2];
+      L[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+      const mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+      S[i] = mx - mn;
+    }
+    return { L, S, W, H };
+  }
+  // card white: bright and grey. The bar is 200, lowered when the whole screenshot is darker.
+  function whiteLevel(L, S) {
+    const hist = new Uint32Array(256); let cnt = 0;
+    for (let i = 0; i < L.length; i++) if (S[i] < 20) { hist[L[i] > 255 ? 255 : L[i] | 0]++; cnt++; }
+    let acc = 0, p = 255; const target = cnt * 0.995;
+    for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= target) { p = v; break; } }
+    return Math.min(200, Math.max(120, 0.86 * p));
+  }
+  function whiteMask(L, S, W, H, T) {
+    const n = W * H, m = new Uint8Array(n), d = new Uint8Array(n), e = new Uint8Array(n);
+    for (let i = 0; i < n; i++) m[i] = L[i] > T && S[i] < 45 ? 1 : 0;
+    // close with a 7-wide horizontal bar: bridges the thin shadow lines between cards
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      for (let x = 0; x < W; x++) {
+        let v = 0; const a = x - 3 < 0 ? 0 : x - 3, z = x + 3 > W - 1 ? W - 1 : x + 3;
+        for (let xx = a; xx <= z; xx++) if (m[o + xx]) { v = 1; break; }
+        d[o + x] = v;
+      }
+      for (let x = 0; x < W; x++) {
+        let v = 1; const a = x - 3 < 0 ? 0 : x - 3, z = x + 3 > W - 1 ? W - 1 : x + 3;
+        for (let xx = a; xx <= z; xx++) if (!d[o + xx]) { v = 0; break; }
+        e[o + x] = v;
+      }
+    }
+    return e;
+  }
+  // 8-connected components: labels (resolved to roots) and per-root area and box
+  function components(m, W, H) {
+    const lab = new Int32Array(W * H);
+    let parent = new Int32Array(1024), next = 1;
+    const find = (a) => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+    const unite = (a, b) => { a = find(a); b = find(b); if (a !== b) { if (a < b) parent[b] = a; else parent[a] = b; } };
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      for (let x = 0; x < W; x++) {
+        const i = o + x; if (!m[i]) continue;
+        let a = 0, b = 0, c = 0, d = 0;
+        if (x > 0 && m[i - 1]) a = lab[i - 1];
+        if (y > 0) { const j = i - W; if (x > 0 && m[j - 1]) b = lab[j - 1]; if (m[j]) c = lab[j]; if (x < W - 1 && m[j + 1]) d = lab[j + 1]; }
+        let mn = 0;
+        for (const v of [a, b, c, d]) if (v && (!mn || v < mn)) mn = v;
+        if (!mn) {
+          if (next >= parent.length) { const p2 = new Int32Array(parent.length * 2); p2.set(parent); parent = p2; }
+          parent[next] = next; lab[i] = next++;
+        } else {
+          lab[i] = mn;
+          if (a && a !== mn) unite(mn, a); if (b && b !== mn) unite(mn, b); if (c && c !== mn) unite(mn, c); if (d && d !== mn) unite(mn, d);
+        }
+      }
+    }
+    const stats = new Map();
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      for (let x = 0; x < W; x++) {
+        const i = o + x; if (!lab[i]) continue;
+        const r = find(lab[i]); lab[i] = r;
+        let s = stats.get(r);
+        if (!s) { s = { id: r, area: 0, x0: x, x1: x, y0: y, y1: y }; stats.set(r, s); }
+        s.area++; if (x < s.x0) s.x0 = x; if (x > s.x1) s.x1 = x; if (y < s.y0) s.y0 = y; if (y > s.y1) s.y1 = y;
+      }
+    }
+    return { lab, stats: [...stats.values()] };
+  }
+
+  function findRow(img) {
+    const { L, S, W, H } = lumSat(img);
+    const sc = W / 1920;
+    const T = whiteLevel(L, S);
+    const { lab, stats } = components(whiteMask(L, S, W, H, T), W, H);
+    let comp = null;
+    for (const s of stats) {
+      const w = s.x1 - s.x0 + 1, h = s.y1 - s.y0 + 1;
+      if (w < 250 * sc || h < 25 * sc || w / h < 3) continue;
+      if (!comp || s.area > comp.area) comp = s;
+    }
+    if (!comp) return { why: "沒找到牌列" };
+    const x = comp.x0, y = comp.y0, w = comp.x1 - comp.x0 + 1, h = comp.y1 - comp.y0 + 1;
+    // top edge: the first row of the white region in each column
+    const TX = [], TY = [], faceVals = [];
+    for (let xx = x; xx < x + w; xx++) {
+      for (let yy = y; yy < y + h; yy++) if (lab[yy * W + xx] === comp.id) { TX.push(xx); TY.push(yy); break; }
+    }
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (lab[yy * W + xx] === comp.id) faceVals.push(L[yy * W + xx]);
+    const top = ransacLine(TX, TY, 2.5, 400, 1, 0.2);
+    if (!top) return { why: "牌列上緣不清楚" };
+    const { m: mt, c: ct } = top;
+    // the dark strip under the cards: the strongest bright-above / dark-below straight edge
+    const xa = x + 0.04 * w, xb = x + 0.96 * w, xm = (xa + xb) / 2, NX = 120;
+    const X = new Float32Array(NX); for (let i = 0; i < NX; i++) X[i] = xa + (xb - xa) * i / (NX - 1);
+    const vals = new Float32Array(NX);
+    let best = null;
+    for (let d = 0.06 * w; d < 0.30 * w; d += 1) {
+      for (let k = -10; k <= 10; k++) {
+        const dm = k * 0.004;
+        for (let i = 0; i < NX; i++) {
+          const Y = ct + mt * X[i] + d + dm * (X[i] - xm);
+          const up = bil(L, W, H, X[i], Y - 3), dn = bil(L, W, H, X[i], Y + 4), dn2 = bil(L, W, H, X[i], Y + 10);
+          vals[i] = Math.min(up - dn, up - dn2);
+        }
+        const s = median(vals);
+        if (!best || s > best.s) best = { s, d, dm };
+      }
+    }
+    // finer, around the best
+    for (let d = best.d - 1; d <= best.d + 1 + 1e-9; d += 0.25) {
+      for (let dm = best.dm - 0.004; dm <= best.dm + 0.004 + 1e-9; dm += 0.0005) {
+        for (let i = 0; i < NX; i++) {
+          const Y = ct + mt * X[i] + d + dm * (X[i] - xm);
+          const up = bil(L, W, H, X[i], Y - 3), dn = bil(L, W, H, X[i], Y + 4), dn2 = bil(L, W, H, X[i], Y + 10);
+          vals[i] = Math.min(up - dn, up - dn2);
+        }
+        const s = median(vals);
+        if (s > best.s) best = { s, d, dm };
+      }
+    }
+    const mb = mt + best.dm, cb = ct + best.d - best.dm * xm;
+    const face = median(faceVals);
+    // the row's ends: where the white faces start and stop, just under the top edge (above the rank glyphs)
+    const x0s = x - 0.12 * w, nx = Math.floor(w * 1.17);
+    const on = new Uint8Array(nx);
+    for (const frac of [0.03, 0.05, 0.07]) {
+      for (let i = 0; i < nx; i++) {
+        const xx = x0s + i, yy = (ct + mt * xx) * (1 - frac) + (cb + mb * xx) * frac;
+        if (bil(L, W, H, xx, yy) > 0.78 * face && bil(S, W, H, xx, yy) < 22) on[i] = 1;
+      }
+    }
+    let mid = Math.round(x + w / 2 - x0s), lo = -1, hi = -1;
+    if (on[mid]) { lo = hi = mid; }
+    let gap = 0;
+    for (let i = mid - 1; i >= 0; i--) { if (on[i]) { lo = i; gap = 0; if (hi < 0) hi = i; } else if (++gap > 6) break; }
+    gap = 0;
+    for (let i = mid + 1; i < nx; i++) { if (on[i]) { hi = i; gap = 0; if (lo < 0) lo = i; } else if (++gap > 6) break; }
+    if (lo < 0 || hi <= lo) return { why: "找不到牌列兩端" };
+    const xl = x0s + lo, xr = x0s + hi;
+    return { mt, ct, mb, cb, xl, xr, edge: best.s, face, topInl: top.inl, T };
+  }
+
+  // ---------- 2. straighten it ----------
+  // the row's corners from its top line and strip line, the ends pushed out by `ext` of the width on each side
+  function quadOf(g, ext) {
+    const { mt, ct, mb, cb } = g, m = ext * (g.xr - g.xl), xl = g.xl - m, xr = g.xr + m;
+    const th = Math.atan(mt), nx = -Math.sin(th), ny = Math.cos(th);
+    const hit = (x0, y0) => { const t = (cb + mb * x0 - y0) / (ny - mb * nx); return [x0 + t * nx, y0 + t * ny]; };
+    const TL = [xl, ct + mt * xl], TR = [xr, ct + mt * xr];
+    return [TL, TR, hit(...TR), hit(...TL)];
+  }
+  const applyH = (Hm, u, v) => { const z = Hm[6] * u + Hm[7] * v + Hm[8]; return [(Hm[0] * u + Hm[1] * v + Hm[2]) / z, (Hm[3] * u + Hm[4] * v + Hm[5]) / z]; };
+  function straighten(img, quad, Hgiven) {
+    const Hm = Hgiven || homography([[0, 0], [BW, 0], [BW, BH], [0, BH]], quad);   // band -> screenshot
+    const { width: W, height: H, data } = img;
+    const band = new Float32Array(BW * BH * 3);
+    for (let v = 0; v < BH; v++) for (let u = 0; u < BW; u++) {
+      const zz = Hm[6] * u + Hm[7] * v + Hm[8];
+      let x = (Hm[0] * u + Hm[1] * v + Hm[2]) / zz, y = (Hm[3] * u + Hm[4] * v + Hm[5]) / zz;
+      if (x < 0) x = 0; else if (x > W - 1) x = W - 1;
+      if (y < 0) y = 0; else if (y > H - 1) y = H - 1;
+      const x0 = Math.floor(x), y0 = Math.floor(y), x1 = x0 < W - 1 ? x0 + 1 : x0, y1 = y0 < H - 1 ? y0 + 1 : y0, tx = x - x0, ty = y - y0;
+      const o = (v * BW + u) * 3;
+      for (let ch = 0; ch < 3; ch++) {
+        const a = data[(y0 * W + x0) * 4 + ch], b = data[(y0 * W + x1) * 4 + ch], c = data[(y1 * W + x0) * 4 + ch], d = data[(y1 * W + x1) * 4 + ch];
+        band[o + ch] = (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+      }
+    }
+    return { band, Hm };
+  }
+  function bandLum(band, w, h) {
+    const L = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) L[i] = 0.299 * band[i * 3] + 0.587 * band[i * 3 + 1] + 0.114 * band[i * 3 + 2];
+    return L;
+  }
+
+  // ---------- 3. the 13 card edges: an even comb ----------
+  function lineProfile(Lb, r0, r1, face) {
+    // thin dark vertical lines (each card's left edge): both neighbours 3 px away brighter than the column itself
+    const v = new Float32Array(BW), bar = 0.68 * face;
+    for (let x = 3; x < BW - 3; x++) {
+      let s = 0;
+      for (let r = r0; r < r1; r++) {
+        const o = r * BW, l = Lb[o + x - 3], rr = Lb[o + x + 3], mn = l < rr ? l : rr;
+        if (mn > bar) { let d = mn - Lb[o + x]; if (d < 0) d = 0; else if (d > 60) d = 60; s += d; }
+      }
+      v[x] = s / (r1 - r0);
+    }
+    return v;
+  }
+  function interp(p, x) {
+    if (x < 0) x = 0; else if (x > p.length - 1.001) x = p.length - 1.001;
+    const i = Math.floor(x), t = x - i; return p[i] * (1 - t) + p[i + 1] * t;
+  }
+  const RHO = 1.65, P0 = BW / (12 + RHO);   // the last card is 1.65 pitches wide; in the final band the pitch is P0
+  function edgeProfile(Lb, face) {
+    const a = lineProfile(Lb, 3, 14, face), b = lineProfile(Lb, 60, 112, face), prof = new Float32Array(BW);
+    for (let i = 0; i < BW; i++) prof[i] = 2 * a[i] + b[i];
+    return prof;
+  }
+  // card left edges 1..12 at x0 + i p; with ends, also the row's two ends (white starts at x0, stops at x0 + (12 + RHO) p)
+  function fitComb(prof, pr, xr, ends) {
+    let best = null;
+    for (let p = pr[0]; p <= pr[1] + 1e-9; p += 0.1) {
+      for (let x0 = xr[0]; x0 <= xr[1] + 1e-9; x0 += 0.5) {
+        let s = 0;
+        for (let i = 1; i <= 12; i++) s += interp(prof, x0 + p * i);
+        let e = 0;
+        if (ends) e = interp(ends.L, x0) + interp(ends.R, x0 + (12 + RHO) * p);
+        if (!best || s + e > best.t) best = { t: s + e, s, e, p, x0 };
+      }
+    }
+    return best;
+  }
+  // each edge 1..12: the strongest point within 7 px of the comb, to a fraction of a pixel
+  function edgePeaks(prof, comb) {
+    const out = [];
+    for (let i = 1; i <= 12; i++) {
+      const xc = comb.x0 + i * comb.p; let bx = -1, bv = -1;
+      for (let x = Math.max(1, Math.round(xc - 7)); x <= Math.min(BW - 2, Math.round(xc + 7)); x++) if (prof[x] > bv) { bv = prof[x]; bx = x; }
+      if (bx < 0) continue;
+      const a = prof[bx - 1], b = prof[bx], c = prof[bx + 1], den = a - 2 * b + c;
+      out.push({ i, x: bx + (den < 0 ? 0.5 * (a - c) / den : 0), v: bv });
+    }
+    return out;
+  }
+  // x = (a + b i) / (1 + c i) through the edge positions (weak ones and outliers dropped)
+  function projFit(pk) {
+    if (!pk.length) return null;
+    const vmed = median(pk.map((q) => q.v));
+    let pts = pk.filter((q) => q.v >= 0.35 * vmed);
+    const fit = (P) => {
+      // least squares for [1, i, -i x] . [a, b, c] = x
+      const A = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], r = [0, 0, 0];
+      for (const q of P) { const row = [1, q.i, -q.i * q.x]; for (let j = 0; j < 3; j++) { r[j] += row[j] * q.x; for (let k = 0; k < 3; k++) A[j][k] += row[j] * row[k]; } }
+      const [a, b, c] = solve(A, r);
+      return { a, b, c, f: (i) => (a + b * i) / (1 + c * i) };
+    };
+    let F = null;
+    for (let it = 0; it < 4; it++) {
+      if (pts.length < 8) return null;
+      F = fit(pts);
+      let worst = null;
+      for (const q of pts) { const e = Math.abs(F.f(q.i) - q.x); if (!worst || e > worst.e) worst = { e, q }; }
+      F.res = worst.e; F.n = pts.length;
+      if (worst.e <= 1.5) break;
+      pts = pts.filter((q) => q !== worst.q);
+    }
+    return F;
+  }
+  // white just under the top edge (rows 3..12): where it starts (L) and stops (R)
+  function endProfiles(band, Lb, face) {
+    const w = new Float32Array(BW), L = new Float32Array(BW), R = new Float32Array(BW);
+    for (let x = 0; x < BW; x++) {
+      let c = 0;
+      for (let r = 3; r < 13; r++) {
+        const i = r * BW + x, o = i * 3, mx = Math.max(band[o], band[o + 1], band[o + 2]), mn = Math.min(band[o], band[o + 1], band[o + 2]);
+        if (Lb[i] > 0.78 * face && mx - mn < 22) c++;
+      }
+      w[x] = c / 10;
+    }
+    for (let x = 3; x < BW - 3; x++) { L[x] = 40 * Math.max(0, w[x + 3] - w[x - 3]); R[x] = 40 * Math.max(0, w[x - 3] - w[x + 3]); }
+    return { L, R };
+  }
+
+  // ---------- 4. each card's rank and suit ----------
+  function cardStrip(band, xa) {
+    const st = new Float32Array(SW * BH * 3);
+    for (let y = 0; y < BH; y++) for (let x = 0; x < SW; x++) {
+      let sx = x + xa; if (sx < 0) sx = 0; else if (sx > BW - 1) sx = BW - 1;
+      const x0 = Math.floor(sx), x1 = x0 < BW - 1 ? x0 + 1 : x0, t = sx - x0, o = (y * SW + x) * 3;
+      for (let ch = 0; ch < 3; ch++) st[o + ch] = band[(y * BW + x0) * 3 + ch] * (1 - t) + band[(y * BW + x1) * 3 + ch] * t;
+    }
+    return st;
+  }
+  function runs(v, thr, minlen) {
+    const out = []; let i = 0;
+    while (i < v.length) {
+      if (v[i] > thr) { let j = i; while (j < v.length && v[j] > thr) j++; if (j - i >= minlen) out.push([i, j]); i = j; } else i++;
+    }
+    return out;
+  }
+  // a W x H window of the ink centred on the ink's box inside rows r0..r1, cols c0..c1
+  function cut(ink, r0, r1, c0, c1, Wn, Hn) {
+    let rmin = -1, rmax = -1, cmin = -1, cmax = -1;
+    for (let r = r0; r < r1; r++) for (let c = c0; c < c1; c++) if (ink[r * SW + c] > 0.5) {
+      if (rmin < 0) rmin = r; rmax = r; if (cmin < 0 || c < cmin) cmin = c; if (c > cmax) cmax = c;
+    }
+    if (rmin < 0) return null;
+    const cy = (rmin + rmax) / 2, cx = (cmin + cmax) / 2, out = new Float32Array(Wn * Hn);
+    for (let y = 0; y < Hn; y++) for (let x = 0; x < Wn; x++) out[y * Wn + x] = bilZero(ink, SW, BH, x + cx - Wn / 2, y + cy - Hn / 2);
+    return { win: out, h: rmax - rmin + 1, w: cmax - cmin + 1, top: rmin, left: cmin };
+  }
+  function half(a, Wn, Hn) {
+    const w = Wn >> 1, h = Hn >> 1, o = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = 2 * y * Wn + 2 * x; o[y * w + x] = (a[i] + a[i + 1] + a[i + Wn] + a[i + Wn + 1]) / 4;
+    }
+    return o;
+  }
+  function glyphs(st) {
+    const Ls = bandLum(st, SW, BH), reg = [];
+    for (let r = 4; r < 112; r++) for (let c = 2; c < 52; c++) reg.push(Ls[r * SW + c]);
+    const face = percentile(reg, 92), dark = percentile(reg, 1), span = Math.max(30, face - dark);
+    const ink = new Float32Array(SW * BH);
+    for (let i = 0; i < SW * BH; i++) { let v = (face - Ls[i]) / span; ink[i] = v < 0 || i % SW < 5 ? 0 : v > 1 ? 1 : v; }
+    const prof = new Float32Array(115);
+    for (let r = 0; r < 115; r++) { let m = 0; for (let c = 4; c < 48; c++) if (ink[r * SW + c] > m) m = ink[r * SW + c]; prof[r] = m; }
+    const rr = runs(prof, 0.5, 6).filter((q) => q[0] >= 4);
+    const k = rr.findIndex((q) => q[1] - q[0] >= 20);
+    if (k < 0 || k + 1 >= rr.length) return null;
+    const [a0, a1] = rr[k];
+    const rank = cut(ink, a0, a1, 2, 52, RWIN[0], RWIN[1]);
+    if (!rank) return null;
+    // the suit: the ink blob right under the rank (the big suit symbol further down stays out)
+    const r0 = a1 + 2, r1 = Math.min(a1 + 40, BH), c0 = 2, c1 = 46, ww = c1 - c0, hh = r1 - r0;
+    const m = new Uint8Array(ww * hh);
+    for (let r = 0; r < hh; r++) for (let c = 0; c < ww; c++) m[r * ww + c] = ink[(r0 + r) * SW + c0 + c] > 0.5 ? 1 : 0;
+    const { lab, stats } = components(m, ww, hh);
+    let bestc = null;
+    for (const s of stats) { if (s.area < 30) continue; const sc = s.area - 3 * s.y0; if (!bestc || sc > bestc.sc) bestc = { sc, id: s.id }; }
+    if (!bestc) return null;
+    const ink2 = new Float32Array(SW * BH);
+    for (let r = 0; r < hh; r++) for (let c = 0; c < ww; c++) {
+      let near = false;
+      for (let dy = -2; dy <= 2 && !near; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const yy = r + dy, xx = c + dx;
+        if (yy >= 0 && yy < hh && xx >= 0 && xx < ww && lab[yy * ww + xx] === bestc.id) { near = true; break; }
+      }
+      if (near) ink2[(r0 + r) * SW + c0 + c] = ink[(r0 + r) * SW + c0 + c];
+    }
+    const suit = cut(ink2, r0, r1, c0, c1, SWIN[0], SWIN[1]);
+    if (!suit) return null;
+    let rs = 0, rn = 0;
+    for (let r = 0; r < 115; r++) for (let c = 0; c < SW; c++) {
+      const i = r * SW + c; if (ink[i] > 0.5) { rs += st[i * 3] - 0.5 * (st[i * 3 + 1] + st[i * 3 + 2]); rn++; }
+    }
+    return {
+      r: half(rank.win, RWIN[0], RWIN[1]), s: half(suit.win, SWIN[0], SWIN[1]),
+      red: rn > 5 ? rs / rn : 0, rh: rank.h, sh: suit.h, rtop: rank.top, rleft: rank.left, stop: suit.top,
+    };
+  }
+
+  // ---------- matching ----------
+  const RW2 = RWIN[0] >> 1, RH2 = RWIN[1] >> 1, SW2 = SWIN[0] >> 1, SH2 = SWIN[1] >> 1;
+  // zero-mean normalised correlation of a (w x h) against T, best over shifts of a by up to sh px (zeros come in)
+  function ncc(a, T, w, h, sh) {
+    let tm = 0; for (let i = 0; i < w * h; i++) tm += T[i]; tm /= w * h;
+    let tt = 0; for (let i = 0; i < w * h; i++) tt += (T[i] - tm) * (T[i] - tm);
+    let best = -1;
+    for (let dy = -sh; dy <= sh; dy++) for (let dx = -sh; dx <= sh; dx++) {
+      let s = 0, ss = 0, st = 0, n = w * h;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const yy = y + dy, xx = x + dx, b = yy >= 0 && yy < h && xx >= 0 && xx < w ? a[yy * w + xx] : 0;
+        s += b; ss += b * b; st += b * (T[y * w + x] - tm);
+      }
+      const bm = s / n, var_ = ss - n * bm * bm, v = st / (Math.sqrt(Math.max(var_, 0) * tt) + 1e-6);
+      if (v > best) best = v;
+    }
+    return best;
+  }
+  function classify(gl, model) {
+    const sc = model.rank.map((T) => ncc(gl.r, T, RW2, RH2, 1));
+    const order = sc.map((v, i) => i).sort((p, q) => sc[q] - sc[p]);
+    const rank = order[0], rTop = sc[rank], rMargin = sc[rank] - sc[order[1]];
+    const isRed = gl.red > 35, colourSure = gl.red > 35 || gl.red < 20;
+    const L = isRed ? model.lda.red : model.lda.black;     // red: 1 ♦ vs 2 ♥ ; black: 0 ♣ vs 3 ♠
+    let z = -L.t; for (let i = 0; i < L.w.length; i++) z += gl.s[i] * L.w[i]; z /= L.s;
+    const suit = isRed ? (z > 0 ? 2 : 1) : (z > 0 ? 3 : 0);
+    return { card: rank * 4 + suit, rank, suit, rTop, rMargin, z, red: gl.red, colourSure };
+  }
+
+  // the game shows the row sorted by rank (♣ ♦ ♥ ♠ within a rank), or grouped by suit (♠ ♥ ♣ ♦, A 2 3 … K within a suit)
+  const SUIT_GROUP = [2, 3, 1, 0];
+  function gameOrder(cards) {
+    const byRank = (c) => c, bySuit = (c) => SUIT_GROUP[c & 3] * 13 + (((c >> 2) + 1) % 13);
+    return [byRank, bySuit].some((k) => cards.every((c, i) => i === 0 || k(c) > k(cards[i - 1])));
+  }
+
+  // ---------- the whole reading ----------
+  const LIMITS = { topInl: 0.85, edge: 100, hRatio: [0.14, 0.2], x0: 4, dp: 1.5, comb: 6, rTop: 0.9, rMargin: 0.04, z: 0.3,
+    rtop: [10, 25], rh: [33, 52], sh: [14, 30], gap: [4, 16], dev: 3.5 };
+  function extract(img) {
+    const t0 = Date.now();
+    const g = findRow(img);
+    if (g.why) return { why: g.why };
+    const width = Math.hypot(g.xr - g.xl, (g.ct + g.mt * g.xr) - (g.ct + g.mt * g.xl));
+    const hgt = (g.cb + g.mb * g.xl) - (g.ct + g.mt * g.xl);
+    // pass 1: a wider band. Its card edges are straight lines, spaced evenly only up to perspective, so: a rough even comb,
+    // then each edge found on the top rows and on the lower rows, then x = (a + b i) / (1 + c i) through each set.
+    const EXT = 0.05, b1 = straighten(img, quadOf(g, EXT)), L1 = bandLum(b1.band, BW, BH);
+    // top rows: only the card edges are there (weighted up); lower rows: above the arrange screen's buttons
+    const pTop = lineProfile(L1, 3, 14, g.face), pLow = lineProfile(L1, 60, 112, g.face), sum = new Float32Array(BW);
+    for (let i = 0; i < BW; i++) sum[i] = 2 * pTop[i] + pLow[i];
+    const pe = BW / ((1 + 2 * EXT) * (12 + RHO)), x0e = BW * EXT / (1 + 2 * EXT);
+    const c1 = fitComb(sum, [0.85 * pe, 1.15 * pe], [x0e - 0.6 * pe, x0e + 0.6 * pe], endProfiles(b1.band, L1, g.face));
+    const fitT = projFit(edgePeaks(pTop, c1)), fitL = projFit(edgePeaks(pLow, c1));
+    if (!fitT || !fitL) return { why: "分不出 13 張牌的邊" };
+    // each edge as a line in the screenshot; where it meets the top line and the strip line, it is at x = i * P0
+    const yT = 8.5, yL = 86, P = [], Q = [];
+    const meet = (p1, p2, m, c) => { const dx = p2[0] - p1[0], dy = p2[1] - p1[1], t = (c + m * p1[0] - p1[1]) / (dy - m * dx); return [p1[0] + t * dx, p1[1] + t * dy]; };
+    for (let i = 1; i <= 12; i++) {
+      const a = applyH(b1.Hm, fitT.f(i), yT), b = applyH(b1.Hm, fitL.f(i), yL);
+      P.push([i * P0, 0]); Q.push(meet(a, b, g.mt, g.ct));
+      P.push([i * P0, BH]); Q.push(meet(a, b, g.mb, g.cb));
+    }
+    const H2 = homographyLSQ(P, Q);
+    const quad = [applyH(H2, 0, 0), applyH(H2, BW, 0), applyH(H2, BW, BH), applyH(H2, 0, BH)];
+    // pass 2: exactly the row; the cards should now sit at i * P0
+    const { band } = straighten(img, null, H2), Lb = bandLum(band, BW, BH);
+    const prof2 = edgeProfile(Lb, g.face);
+    const comb = fitComb(prof2, [P0 - 2.5, P0 + 2.5], [-8, 8], null);
+    const pk = edgePeaks(prof2, comb);
+    comb.dev = Math.max(...pk.map((q) => Math.abs(q.x - (comb.x0 + q.i * comb.p))));
+    comb.fitT = fitT.res; comb.fitL = fitL.res; comb.nT = fitT.n; comb.nL = fitL.n;
+    const cards = [];
+    for (let i = 0; i < 13; i++) cards.push(glyphs(cardStrip(band, comb.x0 + i * comb.p)));
+    return { band, g: { topInl: g.topInl, edge: g.edge, hRatio: hgt / width, width, face: g.face, T: g.T }, comb1: { p: c1.p, x0: c1.x0, s: c1.s / 12, e: c1.e, c: fitT.c },
+      comb: { p: comb.p, x0: comb.x0, s: comb.s / 12, dev: comb.dev, fitT: comb.fitT, fitL: comb.fitL, nT: comb.nT, nL: comb.nL }, cards, quad, ms: Date.now() - t0 };
+  }
+  function read(img, model) {
+    const ex = extract(img);
+    if (ex.why) return { ok: false, why: ex.why };
+    const { g, comb } = ex, why = [];
+    if (g.topInl < LIMITS.topInl) why.push("牌列上緣不直");
+    if (g.edge < LIMITS.edge) why.push("牌列下方的深色條不清楚");
+    if (g.hRatio < LIMITS.hRatio[0] || g.hRatio > LIMITS.hRatio[1]) why.push("牌列比例不對");
+    if (Math.abs(comb.x0) > LIMITS.x0 || Math.abs(comb.p - P0) > LIMITS.dp || comb.s < LIMITS.comb || comb.dev > LIMITS.dev) why.push("分不出 13 張牌的邊");
+    const res = ex.cards.map((gl) => (gl ? classify(gl, model) : null));
+    const unsure = [];
+    res.forEach((c, i) => {
+      if (!c) { unsure.push(i); return; }
+      const gl = ex.cards[i], inR = (v, r) => v >= r[0] && v <= r[1];
+      const placed = inR(gl.rtop, LIMITS.rtop) && inR(gl.rh, LIMITS.rh) && inR(gl.sh, LIMITS.sh) && inR(gl.stop - (gl.rtop + gl.rh), LIMITS.gap);
+      if (!placed || c.rTop < LIMITS.rTop || c.rMargin < LIMITS.rMargin || !c.colourSure || Math.abs(c.z) < LIMITS.z) unsure.push(i);
+    });
+    if (unsure.length) why.push(`第 ${unsure.map((i) => i + 1).join("、")} 張不確定`);
+    const cards = res.map((c) => (c ? c.card : -1));
+    if (!why.length && !gameOrder(cards)) why.push("讀到的順序和遊戲排法不合");
+    const got = res.filter(Boolean), low = (k, f) => (got.length ? Math.min(...got.map(f)) : 0);
+    const conf = { t: low("t", (c) => c.rTop), m: low("m", (c) => c.rMargin), z: low("z", (c) => Math.abs(c.z)) };
+    return { ok: !why.length, why: why.join("；"), cards, detail: res, geo: g, comb, unsure, conf, ms: ex.ms };
+  }
+
+  // ---------- making the model from labelled screenshots ----------
+  function alignedMean(samples, w, h, sh) {
+    let m = new Float32Array(w * h);
+    for (const s of samples) for (let i = 0; i < m.length; i++) m[i] += s[i] / samples.length;
+    for (let it = 0; it < 2; it++) {
+      const acc = new Float32Array(w * h);
+      let mn = 0; for (let i = 0; i < m.length; i++) mn += m[i] * m[i]; mn = Math.sqrt(mn);
+      for (const s of samples) {
+        let best = null;
+        for (let dy = -sh; dy <= sh; dy++) for (let dx = -sh; dx <= sh; dx++) {
+          let dot = 0, bb = 0;
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const yy = y + dy, xx = x + dx, b = yy >= 0 && yy < h && xx >= 0 && xx < w ? s[yy * w + xx] : 0;
+            dot += b * m[y * w + x]; bb += b * b;
+          }
+          const v = dot / (Math.sqrt(bb) * mn + 1e-6);
+          if (!best || v > best.v) best = { v, dy, dx };
+        }
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          const yy = y + best.dy, xx = x + best.dx;
+          acc[y * w + x] += (yy >= 0 && yy < h && xx >= 0 && xx < w ? s[yy * w + xx] : 0) / samples.length;
+        }
+      }
+      m = acc;
+    }
+    return m;
+  }
+  function lda(A, B, reg) {
+    const d = A[0].length, mean = (X) => { const m = new Float64Array(d); for (const x of X) for (let i = 0; i < d; i++) m[i] += x[i] / X.length; return m; };
+    const ma = mean(A), mb = mean(B), n = A.length + B.length;
+    const C = Array.from({ length: d }, () => new Float64Array(d));
+    for (const [X, m] of [[A, ma], [B, mb]]) for (const x of X) {
+      const c = new Float64Array(d); for (let i = 0; i < d; i++) c[i] = x[i] - m[i];
+      for (let i = 0; i < d; i++) { const ci = c[i]; if (!ci) continue; const row = C[i]; for (let j = 0; j < d; j++) row[j] += ci * c[j]; }
+    }
+    // covariance of the pooled, centred samples (numpy's n-1), plus a ridge
+    let tot = new Float64Array(d);
+    const allc = [];
+    for (const [X, m] of [[A, ma], [B, mb]]) for (const x of X) { const c = new Float64Array(d); for (let i = 0; i < d; i++) c[i] = x[i] - m[i]; allc.push(c); }
+    for (const c of allc) for (let i = 0; i < d; i++) tot[i] += c[i] / n;
+    const M = C.map((row, i) => Array.from(row, (v, j) => (v - n * tot[i] * tot[j]) / (n - 1) + (i === j ? reg : 0)));
+    const w = solve(M, Array.from(mb, (v, i) => v - ma[i]));
+    const dot = (x) => { let s = 0; for (let i = 0; i < d; i++) s += x[i] * w[i]; return s; };
+    const t = 0.5 * (dot(ma) + dot(mb));
+    const sa = A.reduce((s, x) => s + dot(x) - t, 0) / A.length, sb = B.reduce((s, x) => s + dot(x) - t, 0) / B.length;
+    return { w: Float32Array.from(w), t, s: (sb - sa) / 2 };
+  }
+  // samples: [{gl, card}] ; returns the model
+  function train(samples) {
+    const byRank = Array.from({ length: 13 }, () => []), bySuit = Array.from({ length: 4 }, () => []);
+    for (const { gl, card } of samples) { byRank[card >> 2].push(gl.r); bySuit[card & 3].push(gl.s); }
+    return {
+      rank: byRank.map((s) => alignedMean(s, RW2, RH2, 1)),
+      lda: { black: lda(bySuit[0], bySuit[3], 0.05), red: lda(bySuit[1], bySuit[2], 0.05) },
+    };
+  }
+  // compact model for the page: rank templates as bytes, LDA weights as float32, both base64
+  function pack(model, b64) {
+    const ranks = new Uint8Array(13 * RW2 * RH2);
+    model.rank.forEach((T, k) => { let mx = 0; for (const v of T) if (v > mx) mx = v; T.forEach((v, i) => { ranks[k * RW2 * RH2 + i] = Math.round(255 * v / (mx || 1)); }); });
+    const L = (o) => ({ w: b64(new Uint8Array(o.w.buffer.slice(0))), t: o.t, s: o.s });
+    return { v: 1, rank: b64(ranks), lda: { black: L(model.lda.black), red: L(model.lda.red) } };
+  }
+  function unpack(p, unb64) {
+    const bytes = unb64(p.rank), rank = [];
+    for (let k = 0; k < 13; k++) rank.push(Float32Array.from(bytes.subarray(k * RW2 * RH2, (k + 1) * RW2 * RH2), (v) => v / 255));
+    const L = (o) => ({ w: new Float32Array(unb64(o.w).buffer.slice(0)), t: o.t, s: o.s });
+    return { rank, lda: { black: L(p.lda.black), red: L(p.lda.red) } };
+  }
+  return { read, extract, classify, train, pack, unpack, gameOrder, LIMITS, BW, BH, P0 };
+})();
+if (typeof module !== "undefined") module.exports = LocalRead;
+</script>
+<script>"use strict";
+// 讀結算清單: the list the game shows after a hand, up to four rows, each a player's 13 cards laid flat as 3 + 5 + 5.
+// The cards are white rectangles on a dark panel: they are found as blobs, cut out one by one, and the rank (top-left
+// corner) and the suit (the big symbol) are matched against templates. The rows together come from one deck, so the
+// cards are assigned so that no card is used twice. Vision Pro screenshots are sharp only where the eyes look, so
+// each card's softness is measured on its edge and card and templates are compared at the same softness.
+const ResultRead = (() => {
+  const CW = 30, CH = 40;                                // one card, normalized
+  const RK = { x: 2, y: 2, w: 15, h: 15 };               // where the rank sits
+  const SU = { x: 10, y: 15, w: 18, h: 22 };             // where the big suit sits
+  const SH = 2;                                          // templates may slide this far
+  const LW = 44, LH = 16;                                // the seat label under the avatar (自己 / 上家 / 對家 / 下家)
+  const THRESHOLDS = [200, 150, 110];
+  const LEVEL = 1.0;                                     // the softness (sigma, in normalized pixels) templates are made at
+
+  const median = (a) => { const s = Float64Array.from(a).sort(); return s.length ? s[s.length >> 1] : 0; };
+
+  // min(R, G, B) and max - min of every pixel: a card face is bright and grey
+  function planes(img) {
+    const W = img.width, H = img.height, d = img.data, N = W * H, mn = new Uint8Array(N), sp = new Uint8Array(N);
+    for (let i = 0, o = 0; i < N; i++, o += 4) {
+      const r = d[o], g = d[o + 1], b = d[o + 2];
+      const lo = r < g ? (r < b ? r : b) : (g < b ? g : b), hi = r > g ? (r > b ? r : b) : (g > b ? g : b);
+      mn[i] = lo; sp[i] = hi - lo;
+    }
+    return { mn, sp, W, H, d };
+  }
+  let STACK = null, SEEN = null;
+  function blobs(P, T) {
+    const { mn, sp, W, H } = P, N = W * H, out = [];
+    if (!STACK || STACK.length < N) { STACK = new Int32Array(N); SEEN = new Uint8Array(N); } else SEEN.fill(0, 0, N);
+    const stack = STACK, seen = SEEN;
+    for (let i = 0; i < N; i++) {
+      if (seen[i] || mn[i] < T || sp[i] > 60) continue;
+      let top = 0, x0 = W, x1 = -1, y0 = H, y1 = -1, area = 0;
+      stack[top++] = i; seen[i] = 1;
+      while (top) {
+        const p = stack[--top], x = p % W, y = (p - x) / W;
+        area++;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        if (x > 0) { const q = p - 1; if (!seen[q] && mn[q] >= T && sp[q] <= 60) { seen[q] = 1; stack[top++] = q; } }
+        if (x < W - 1) { const q = p + 1; if (!seen[q] && mn[q] >= T && sp[q] <= 60) { seen[q] = 1; stack[top++] = q; } }
+        if (y > 0) { const q = p - W; if (!seen[q] && mn[q] >= T && sp[q] <= 60) { seen[q] = 1; stack[top++] = q; } }
+        if (y < H - 1) { const q = p + W; if (!seen[q] && mn[q] >= T && sp[q] <= 60) { seen[q] = 1; stack[top++] = q; } }
+      }
+      const w = x1 - x0 + 1, h = y1 - y0 + 1;
+      if (h >= 16 && h <= 150 && w >= 0.45 * h && w <= 6.2 * h && area >= 0.5 * w * h) out.push({ x0, y0, x1, y1, w, h, area });
+    }
+    return out;
+  }
+  // the rows of cards: 2 to 4 rows of 13 boxes, or null; info tells how card-like the picture was
+  function layout(P, T) {
+    const all = blobs(P, T);
+    const singles = all.filter((b) => b.w >= 0.55 * b.h && b.w <= 1.0 * b.h);
+    const info = { T, singles: singles.length };
+    if (singles.length < 20) return { rows: null, info };
+    let H0 = 0, best = 0;
+    for (const b of singles) { let n = 0; for (const c of singles) if (Math.abs(c.h - b.h) <= 0.12 * b.h) n++; if (n > best) { best = n; H0 = b.h; } }
+    info.alike = best;
+    if (best < 20) return { rows: null, info };
+    const W0 = median(singles.filter((b) => Math.abs(b.h - H0) <= 0.15 * H0).map((b) => b.w));
+    const boxes = [];
+    for (const b of all) {
+      if (Math.abs(b.h - H0) > 0.2 * H0) continue;
+      if (b.w >= 0.7 * W0 && b.w <= 1.3 * W0) boxes.push({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 });
+      else if (b.w > 1.5 * W0) {                             // cards that ran together: cut evenly
+        const k = Math.round((b.w + 0.14 * W0) / (1.14 * W0));
+        if (k >= 2 && k <= 5) for (let j = 0; j < k; j++) boxes.push({ x0: Math.round(b.x0 + j * b.w / k), y0: b.y0, x1: Math.round(b.x0 + (j + 1) * b.w / k) - 1, y1: b.y1, cut: true });
+      }
+    }
+    boxes.sort((a, b) => (a.y0 + a.y1) - (b.y0 + b.y1));
+    let rows = [];
+    for (const b of boxes) {
+      const yc = (b.y0 + b.y1) / 2, last = rows[rows.length - 1];
+      if (last && yc - last.y <= 0.6 * H0) { last.list.push(b); last.y = yc; } else rows.push({ y: yc, list: [b] });
+    }
+    rows = rows.filter((r) => r.list.length >= 8).map((r) => r.list.sort((a, b) => a.x0 - b.x0));
+    info.rows = rows.map((r) => r.length);
+    if (rows.length < 2 || rows.length > 4) return { rows: null, info, cand: boxes };
+    const exact = rows.filter((r) => r.length === 13);
+    if (!exact.length) return { rows: null, info, cand: boxes };
+    const span = median(exact.map((r) => r[12].x0 - r[0].x0)), left = median(exact.map((r) => r[0].x0));
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r.length === 13) continue;
+      if (r.length < 13) return { rows: null, info, cand: boxes };
+      // something card-sized next to the row (part of an avatar): keep the 13 in a run that sit where the other rows sit
+      let bj = -1, bd = 1e9;
+      for (let j = 0; j + 13 <= r.length; j++) { const d = Math.abs(r[j + 12].x0 - r[j].x0 - span) + 0.5 * Math.abs(r[j].x0 - left); if (d < bd) { bd = d; bj = j; } }
+      if (bd > 1.2 * W0) return { rows: null, info, cand: boxes };
+      rows[i] = r.slice(bj, bj + 13);
+    }
+    return { rows, info, H0, W0 };
+  }
+  // the edges of one card to a fraction of a pixel (where the brightness crosses halfway between the panel and the
+  // face), and how soft the edge is: the sigma of a blurred step, in pixels
+  function refine(P, b) {
+    const { mn, W, H } = P;
+    const at = (x, y) => mn[(y < 0 ? 0 : y >= H ? H - 1 : y) * W + (x < 0 ? 0 : x >= W ? W - 1 : x)];
+    const vals = [];
+    for (let y = b.y0; y <= b.y1; y += 2) for (let x = b.x0; x <= b.x1; x += 2) vals.push(mn[y * W + x]);
+    vals.sort((p, q) => p - q);
+    const white = vals[Math.floor(vals.length * 0.8)] || 255;
+    const bw = b.x1 - b.x0, bh = b.y1 - b.y0, R = Math.max(4, Math.round(0.14 * bw)), sigs = [];
+    const cross = (fixed, start, dir, horiz) => {            // from outside (dark) to inside (bright) along a line
+      let dark = 255;
+      for (let k = 1; k <= R; k++) { const v = horiz ? at(start - dir * k, fixed) : at(fixed, start - dir * k); if (v < dark) dark = v; }
+      const half = (white + dark) / 2;
+      let prev = horiz ? at(start - dir * R, fixed) : at(fixed, start - dir * R);
+      for (let k = -R + 1; k <= R; k++) {
+        const pos = start + dir * k, v = horiz ? at(pos, fixed) : at(fixed, pos);
+        if (v >= half && prev < half) { if (horiz) sigs.push((white - dark) / ((v - prev) * 2.5066)); return pos - dir + dir * (half - prev) / (v - prev); }
+        prev = v;
+      }
+      return start;
+    };
+    const fr = [0.3, 0.42, 0.55, 0.68, 0.8];
+    const ls = fr.map((f) => cross(Math.round(b.y0 + f * bh), b.x0, 1, true)), rs = fr.map((f) => cross(Math.round(b.y0 + f * bh), b.x1, -1, true));
+    const xl = median(ls), xr = median(rs);
+    // how much the upright edges lean (dx per dy): a straight-line fit through the five crossings of each side
+    const lean = (v) => { let sx = 0, sy = 0, sxx = 0, sxy = 0; fr.forEach((f, i) => { const y = f * bh; sx += y; sy += v[i]; sxx += y * y; sxy += y * v[i]; }); return (5 * sxy - sx * sy) / (5 * sxx - sx * sx); };
+    const tilt = (lean(ls) + lean(rs)) / 2;
+    const yt = median(fr.map((f) => cross(Math.round(b.x0 + f * bw), b.y0, 1, false)));
+    const yb = median(fr.map((f) => cross(Math.round(b.x0 + f * bw), b.y1, -1, false)));
+    const sig = (sigs.length ? median(sigs) : 1) * CW / Math.max(4, xr - xl);      // in normalized pixels
+    return { xl, xr, yt, yb, white, sig, tilt };
+  }
+  // the card face as ink (0 = paper, 1 = fully dark or fully red), CW x CH, and how red its ink is
+  // slope: how much the row climbs (dy per dx); lean: how much the upright edges lean (dx per dy)
+  function sample(P, r, slope, lean) {
+    const { mn, W, H, d } = P, ink = new Float32Array(CW * CH);
+    const cx = (r.xl + r.xr) / 2, cy = (r.yt + r.yb) / 2, w = r.xr - r.xl, h = r.yb - r.yt;
+    let red = 0, wsum = 0;
+    for (let j = 0; j < CH; j++) {
+      const dv = ((j + 0.5) / CH - 0.5) * h;
+      for (let i = 0; i < CW; i++) {
+        const du = ((i + 0.5) / CW - 0.5) * w;
+        let x = cx + du + dv * lean, y = cy + dv + du * slope;
+        if (x < 0) x = 0; else if (x > W - 1) x = W - 1;
+        if (y < 0) y = 0; else if (y > H - 1) y = H - 1;
+        const x0 = Math.floor(x), x1 = x0 < W - 1 ? x0 + 1 : x0, tx = x - x0, y0 = Math.floor(y), y1 = y0 < H - 1 ? y0 + 1 : y0, ty = y - y0;
+        const v = (mn[y0 * W + x0] * (1 - tx) + mn[y0 * W + x1] * tx) * (1 - ty) + (mn[y1 * W + x0] * (1 - tx) + mn[y1 * W + x1] * tx) * ty;
+        let k = 1 - v / r.white;
+        if (k < 0) k = 0; else if (k > 1) k = 1;
+        ink[j * CW + i] = k;
+        if (k > 0.35) { const o = (Math.round(y) * W + Math.round(x)) * 4; red += k * (d[o] - d[o + 2]) / 255; wsum += k; }
+      }
+    }
+    return { ink, red: wsum ? red / wsum : 0 };
+  }
+  // Gaussian blur of a w x h float image (edges repeat)
+  function blur(a, w, h, sigma) {
+    if (!(sigma > 0.2)) return a;
+    const R = Math.ceil(3 * sigma), k = new Float32Array(2 * R + 1);
+    let sum = 0;
+    for (let i = -R; i <= R; i++) { k[i + R] = Math.exp(-i * i / (2 * sigma * sigma)); sum += k[i + R]; }
+    for (let i = 0; i < k.length; i++) k[i] /= sum;
+    const t = new Float32Array(w * h), out = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0; for (let i = -R; i <= R; i++) { const xx = x + i < 0 ? 0 : x + i >= w ? w - 1 : x + i; s += k[i + R] * a[y * w + xx]; } t[y * w + x] = s; }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0; for (let i = -R; i <= R; i++) { const yy = y + i < 0 ? 0 : y + i >= h ? h - 1 : y + i; s += k[i + R] * t[yy * w + x]; } out[y * w + x] = s; }
+    return out;
+  }
+  const soften = (ink, from, to) => blur(ink, CW, CH, to > from ? Math.sqrt(to * to - from * from) : 0);
+  // normalized correlation of template t (w x h) with the card's ink at (x, y)
+  // (wt: optional weights, one per template pixel: where the templates of different ranks or suits differ most)
+  function ncc(ink, x, y, t, w, h, wt) {
+    let sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0, n = 0;
+    for (let j = 0; j < h; j++) {
+      const o = (y + j) * CW + x, p = j * w;
+      for (let i = 0; i < w; i++) { const a = ink[o + i], b = t[p + i], q = wt ? wt[p + i] : 1; sa += q * a; sb += q * b; saa += q * a * a; sbb += q * b * b; sab += q * a * b; n += q; }
+    }
+    const va = saa - sa * sa / n, vb = sbb - sb * sb / n;
+    return va > 1e-9 && vb > 1e-9 ? (sab - sa * sb / n) / Math.sqrt(va * vb) : 0;
+  }
+  function bestNcc(ink, R, t, wt) {
+    let best = -1, bx = 0, by = 0;
+    for (let dy = -SH; dy <= SH; dy++) for (let dx = -SH; dx <= SH; dx++) {
+      const v = ncc(ink, R.x + dx, R.y + dy, t, R.w, R.h, wt);
+      if (v > best) { best = v; bx = dx; by = dy; }
+    }
+    return { v: best, dx: bx, dy: by };
+  }
+  // how much a set of templates differs at each pixel (their variance there, plus a floor), scaled to mean 1
+  function spreadOf(ts) {
+    const n = ts[0].length, out = new Float32Array(n);
+    let sum = 0;
+    for (let i = 0; i < n; i++) { let m = 0, v = 0; for (const t of ts) m += t[i] / ts.length; for (const t of ts) v += (t[i] - m) * (t[i] - m) / ts.length; out[i] = v; sum += v; }
+    const floor = 0.15 * sum / n;
+    sum = 0;
+    for (let i = 0; i < n; i++) { out[i] += floor; sum += out[i]; }
+    for (let i = 0; i < n; i++) out[i] *= n / sum;
+    return out;
+  }
+  const cutOut = (ink, R, dx, dy) => { const out = new Float32Array(R.w * R.h); for (let j = 0; j < R.h; j++) for (let i = 0; i < R.w; i++) out[j * R.w + i] = ink[(R.y + dy + j) * CW + R.x + dx + i]; return out; };
+  // the model's templates at a softness level (made at LEVEL; softer ones are blurred from those, and kept)
+  function templatesAt(model, level) {
+    const key = Math.max(Math.round(level * 10), Math.round(LEVEL * 10));
+    if (!model.soft) model.soft = new Map();
+    let m = model.soft.get(key);
+    if (!m) {
+      const s = Math.sqrt(Math.max(0, (key / 10) * (key / 10) - LEVEL * LEVEL));
+      m = { rank: model.rank.map((t) => blur(t, RK.w, RK.h, s)), suit: model.suit.map((t) => blur(t, SU.w, SU.h, s)) };
+      m.rankW = spreadOf(m.rank); m.suitW = spreadOf(m.suit);
+      model.soft.set(key, m);
+    }
+    return m;
+  }
+
+  // rows x 52 cards, every card at most once: the assignment with the highest total score (Hungarian method)
+  function assign(score, n, m) {
+    const INF = 1e18, u = new Float64Array(n + 1), v = new Float64Array(m + 1), p = new Int32Array(m + 1), way = new Int32Array(m + 1);
+    for (let i = 1; i <= n; i++) {
+      p[0] = i;
+      let j0 = 0;
+      const minv = new Float64Array(m + 1).fill(INF), used = new Uint8Array(m + 1);
+      do {
+        used[j0] = 1;
+        const i0 = p[j0];
+        let delta = INF, j1 = 0;
+        for (let j = 1; j <= m; j++) if (!used[j]) {
+          const cur = -score[(i0 - 1) * m + j - 1] - u[i0] - v[j];
+          if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+          if (minv[j] < delta) { delta = minv[j]; j1 = j; }
+        }
+        for (let j = 0; j <= m; j++) if (used[j]) { u[p[j]] += delta; v[j] -= delta; } else minv[j] -= delta;
+        j0 = j1;
+      } while (p[j0] !== 0);
+      do { const j1 = way[j0]; p[j0] = p[j1]; j0 = j1; } while (j0);
+    }
+    const out = new Int32Array(n).fill(-1);
+    for (let j = 1; j <= m; j++) if (p[j]) out[p[j] - 1] = j - 1;
+    return out;
+  }
+
+  // the seat label of a row: the strokes of the gold text under the avatar, left of the first card, LW x LH
+  // (brightness minus its local average, so the glow all four labels share drops out)
+  function labelPatch(P, first, W0, H0) {
+    const { W, H, d } = P, raw = new Float32Array(LW * LH), out = new Float32Array(LW * LH);
+    const xa = first.xl - 2.45 * W0, xb = first.xl - 0.65 * W0, ya = first.yt + 1.12 * H0, yb = first.yt + 1.72 * H0;
+    for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) {
+      const fx = Math.min(W - 1.001, Math.max(0, xa + (i + 0.5) * (xb - xa) / LW)), fy = Math.min(H - 1.001, Math.max(0, ya + (j + 0.5) * (yb - ya) / LH));
+      const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0, o = (y0 * W + x0) * 4, o2 = o + W * 4;
+      const v = (p) => (d[p] + d[p + 1]) / 2;                  // gold text: red and green
+      raw[j * LW + i] = (v(o) * (1 - tx) + v(o + 4) * tx) * (1 - ty) + (v(o2) * (1 - tx) + v(o2 + 4) * tx) * ty;
+    }
+    const sm = blur(raw, LW, LH, 3);
+    for (let i = 0; i < out.length; i++) out[i] = raw[i] - sm[i];
+    return out;
+  }
+  function corr(a, b, w, h, dx, dy) {                       // a shifted by (dx, dy) against b, over the overlap
+    let sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0, n = 0;
+    for (let j = Math.max(0, -dy); j < Math.min(h, h - dy); j++) for (let i = Math.max(0, -dx); i < Math.min(w, w - dx); i++) {
+      const x = a[(j + dy) * w + i + dx], y = b[j * w + i];
+      sa += x; sb += y; saa += x * x; sbb += y * y; sab += x * y; n++;
+    }
+    const va = saa - sa * sa / n, vb = sbb - sb * sb / n;
+    return va > 1e-6 && vb > 1e-6 ? (sab - sa * sb / n) / Math.sqrt(va * vb) : 0;
+  }
+  const bestCorr = (a, b) => { let best = -1; for (let dy = -3; dy <= 3; dy++) for (let dx = -6; dx <= 6; dx++) { const v = corr(a, b, LW, LH, dx, dy); if (v > best) best = v; } return best; };
+
+  // find the rows and cut every card; { list: false } when the picture is not a result list
+  function extract(img) {
+    const P = planes(img), tried = [];
+    let L = null, empty = 0, cand = null;
+    for (const T of THRESHOLDS) {
+      const r = layout(P, T);
+      tried.push(r.info);
+      if (r.rows) { L = r; break; }
+      if (r.cand && (!cand || r.cand.length > cand.length)) cand = r.cand;
+      if (r.info.singles < 12 && ++empty >= 3) break;
+    }
+    // no clean rows, or fewer than the four a table has: the boxes of one height go back, to tell a result list that is
+    // partly covered or cut off (they read as this game's cards) from any other picture (see read)
+    if (!L) return { list: false, cand, P, tried };
+    if (L.rows.length !== 4) return { list: false, cand: [].concat(...L.rows), P, tried };
+    const rows = L.rows.map((row) => {
+      const rs = row.map((b) => refine(P, b));
+      // the row direction: a line through the 13 card centres; the lean of the uprights: the middle one of the 13
+      let sx = 0, sy = 0, sxx = 0, sxy = 0;
+      for (const r of rs) { const x = (r.xl + r.xr) / 2, y = (r.yt + r.yb) / 2; sx += x; sy += y; sxx += x * x; sxy += x * y; }
+      const n = rs.length, slope = (n * sxy - sx * sy) / (n * sxx - sx * sx), lean = median(rs.map((r) => r.tilt));
+      return rs.map((r, i) => { const s = sample(P, r, slope, lean); return { box: row[i], r, ink: s.ink, red: s.red, sig: r.sig, slope, lean }; });
+    });
+    const labels = rows.map((row) => labelPatch(P, row[0].r, median(row.map((c) => c.r.xr - c.r.xl)), median(row.map((c) => c.r.yb - c.r.yt))));
+    return { list: true, rows, labels, T: L.info.T, H0: L.H0, W0: L.W0, tried };
+  }
+
+  // how many of the boxes read as a card of this game's result list (a rank and a suit where they should be)
+  function cardLike(P, boxes, model) {
+    let n = 0;
+    for (const b of boxes.slice(0, 60)) {
+      const r = refine(P, b);
+      if (!(r.xr - r.xl > 6 && r.yb - r.yt > 8)) continue;
+      const s = sample(P, r, 0, r.tilt), level = Math.max(LEVEL, r.sig), ink = soften(s.ink, r.sig, level), T = templatesAt(model, level);
+      let br = -1, bs = -1;
+      for (let k = 0; k < 13; k++) { const v = bestNcc(ink, RK, T.rank[k], T.rankW).v; if (v > br) br = v; }
+      for (let u = 0; u < 4; u++) { const v = bestNcc(ink, SU, T.suit[u], T.suitW).v; if (v > bs) bs = v; }
+      if (br >= 0.65 && bs >= 0.7) n++;
+    }
+    return n;
+  }
+  const LIKE = 16;                                           // more cards than one hand: a list, not a hand
+  function read(img, model) {
+    const t0 = Date.now();
+    const ex = extract(img);
+    if (!ex.list) {
+      // maybe: probably a result list that is partly covered or cut off
+      const like = ex.cand && ex.cand.length >= LIKE ? cardLike(ex.P, ex.cand, model) : 0;
+      return { list: false, ok: false, maybe: like >= LIKE, like, boxes: ex.cand ? ex.cand.length : 0, ms: Date.now() - t0 };
+    }
+    const cards = [].concat(...ex.rows), n = cards.length, m = 52, score = new Float64Array(n * m);
+    const rs = new Float32Array(n * 13), ss = new Float32Array(n * 4);
+    for (let s = 0; s < n; s++) {
+      const c = cards[s], level = Math.max(LEVEL, c.sig), ink = soften(c.ink, c.sig, level), T = templatesAt(model, level);
+      for (let r = 0; r < 13; r++) rs[s * 13 + r] = bestNcc(ink, RK, T.rank[r], T.rankW).v;
+      for (let u = 0; u < 4; u++) ss[s * 4 + u] = bestNcc(ink, SU, T.suit[u], T.suitW).v;
+      const isRed = c.red > 0.2;
+      for (let k = 0; k < 52; k++) {
+        const u = k & 3, redSuit = u === 1 || u === 2;
+        score[s * m + k] = rs[s * 13 + (k >> 2)] + ss[s * 4 + u] - (redSuit === isRed ? 0 : 5);
+      }
+    }
+    const pick = assign(score, n, m);
+    // how sure: the worst card's fit, and how much any two places would lose by trading cards (or one place by taking a card nobody holds)
+    let sumR = 0, sumS = 0, minR = 9, minS = 9, lead = 9;
+    const held = new Uint8Array(52);
+    for (let s = 0; s < n; s++) {
+      held[pick[s]] = 1;
+      const r = rs[s * 13 + (pick[s] >> 2)], u = ss[s * 4 + (pick[s] & 3)];
+      sumR += r; sumS += u; if (r < minR) minR = r; if (u < minS) minS = u;
+    }
+    for (let a = 0; a < n; a++) {
+      const sa = score[a * m + pick[a]];
+      for (let k = 0; k < 52; k++) if (!held[k] && sa - score[a * m + k] < lead) lead = sa - score[a * m + k];
+      for (let b = a + 1; b < n; b++) {
+        const d = sa + score[b * m + pick[b]] - score[a * m + pick[b]] - score[b * m + pick[a]];
+        if (d < lead) lead = d;
+      }
+    }
+    const rows = ex.rows.map((row, i) => row.map((_, j) => pick[i * 13 + j]));
+    // which row is 自己
+    let me = -1, meQ = null;
+    if (model.label) {
+      const sc = ex.labels.map((p) => bestCorr(p, model.label.me) - Math.max(...model.label.other.map((t) => bestCorr(p, t))));
+      const order = sc.map((x, i) => i).sort((a, b) => sc[b] - sc[a]);
+      meQ = { top: sc[order[0]], next: sc[order[1]], all: sc };
+      if (sc[order[0]] >= 0.12 && sc[order[0]] - sc[order[1]] >= 0.2) me = order[0];
+    }
+    const q = { n, lead, meanR: sumR / n, meanS: sumS / n, minR, minS, soft: Math.max(...cards.map((c) => c.sig)) };
+    const why = [];
+    if (lead < 0.02) why.push("有幾張牌分不清楚");
+    if (q.meanR < 0.75 || q.meanS < 0.8) why.push("牌面太模糊");
+    else if (minR < 0.5 || minS < 0.6) why.push("有牌被擋到或看不清楚");
+    return { list: true, ok: !why.length, why: why.join("；"), rows, me, meQ, q, T: ex.T, H0: ex.H0, ms: Date.now() - t0 };
+  }
+
+  // ---------- templates from labelled screenshots: [{ img, rows: [[13 card ids] …], me: row index }] ----------
+  function train(list) {
+    const rankEx = [...Array(13)].map(() => []), suitEx = [...Array(4)].map(() => []), meEx = [], otherEx = [];
+    for (const s of list) {
+      const ex = extract(s.img);
+      if (!ex.list || ex.rows.length !== s.rows.length) throw new Error("layout not found");
+      ex.rows.forEach((row, i) => row.forEach((c, j) => { const k = s.rows[i][j], ink = soften(c.ink, c.sig, LEVEL); rankEx[k >> 2].push(ink); suitEx[k & 3].push(ink); }));
+      ex.labels.forEach((p, i) => { if (i === s.me) meEx.push(p); else otherEx.push(p); });
+    }
+    const mean = (inks, R) => {
+      let t = new Float32Array(R.w * R.h);
+      for (const ink of inks) { const c = cutOut(ink, R, 0, 0); for (let i = 0; i < t.length; i++) t[i] += c[i] / inks.length; }
+      for (let it = 0; it < 2; it++) {                         // line the examples up with their mean, average again
+        const t2 = new Float32Array(R.w * R.h);
+        for (const ink of inks) { const b = bestNcc(ink, R, t), c = cutOut(ink, R, b.dx, b.dy); for (let i = 0; i < t2.length; i++) t2[i] += c[i] / inks.length; }
+        t = t2;
+      }
+      return t;
+    };
+    const model = { rank: rankEx.map((e) => mean(e, RK)), suit: suitEx.map((e) => mean(e, SU)), label: null, counts: { rank: rankEx.map((e) => e.length), suit: suitEx.map((e) => e.length) } };
+    if (meEx.length && otherEx.length) model.label = { me: meEx[0], other: otherEx };
+    return model;
+  }
+  // templates as bytes; the label strokes are signed, so they are stored around 128
+  function pack(model, b64) {
+    const q = (t, signed) => { const u = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) u[i] = Math.max(0, Math.min(255, Math.round(signed ? 128 + t[i] : 255 * t[i]))); return b64(u); };
+    return { v: 2, rank: model.rank.map((t) => q(t)), suit: model.suit.map((t) => q(t)), label: model.label ? { me: q(model.label.me, true), other: model.label.other.map((t) => q(t, true)) } : null };
+  }
+  function unpack(p, unb64) {
+    const f = (s, signed) => Float32Array.from(unb64(s), (v) => (signed ? v - 128 : v / 255));
+    return { rank: p.rank.map((s) => f(s)), suit: p.suit.map((s) => f(s)), label: p.label ? { me: f(p.label.me, true), other: p.label.other.map((s) => f(s, true)) } : null };
+  }
+  return { read, extract, train, pack, unpack, layout, planes, CW, CH, RK, SU, LEVEL };
+})();
+if (typeof module !== "undefined") module.exports = ResultRead;
+</script>
+<script>
+(() => {
+  "use strict";
+  const LR_MODEL = {"v":1,"rank":"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","lda":{"black":{"w":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATesFPFZ0JD11JLs9/1mJPUAaijwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAISIezw3ybU9w+u/Pokwpj/K9GY/RiQZPkvSQT0ugjU6AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAcD207k+Iqvr0ezL/seay/1RFZP/eCmr7KvAbAb6FWv6JdgzwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACwPbjx5f6u/IL1jwAGQL8D2MQq/sU7tv/HvesCMOUjALM5uvgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAW8fOPJJEBMDWrEXAA/Tov0HoNb+zj9G//VRLwIHmXsD4YSK/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACEAy0/Zw60PfedWzt9Xmm+BnUyv8pPib8fiRG/DzQ1v+kt1D72aBk9AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALgH7PfJPG0AwIXVA3rSLQE/n7D/99CU9K7iKPrpCMEBkO3tAFvY9QMydGz88x6M7AAAAAAAAAAAAAAAAAAAAAC+KLb2RGCa9Pm0JQA0ftkCk7LVA4zwlQCIlkz6rhWM/jNN5QDAFtkCPPG9AgcHbPiTbeb6/9s07AAAAAAAAAAAuD2A7VOJ2v5FHpL9bs7g/LOtjQLbXUEDH1Z4/4hhqPfeKoT4rZQFAY3tHQCt6GECIJKy+msz4v0qhCL4AAAAAAAAAAPREcTyHrRnAGOjnv8frVT4dEYg/JmCAP+s2QD7m8pc4SpexPH537j72llo/oxvIPnsMgr8DqEzApXkOvwAAAAAAAAAAtOD3PBepMsCTxOy/FvELv09Ry77Ly7e9aVE4vc6sor0yhZa94I25vZpm7r4hP1q/vY+vvyTxYMBQNy6/AAAAAAAAAAChFQM9FCgdwA32v7969ve+4BtVvxjnUb9TUUC/lXRPv+gzS7+jSFG/VfaMv0+Ykb9w1KC/1HtHwJcIF78AAAAAAAAAAGrBozzmu8S/6crfv50JSL8YQ6e/P9Snv3H3qb+xtKm/VCPFv1hVpL9Rlc+/Bzm/vxNnw79MrjDA7JONvgAAAAAAAAAATtFHO0sXib7Fl+e/K2Klv1O6QL9tOoi/pfz3vyMJEb/lXK+/P7Hov+Tagr8C0pK/q533v5+yyL8DN5Y7AAAAAAAAAAAAAAAAXGFVPPIckr1kSwu/iWs3v3gi0b9c5zi/3nn/P/91iT+/a/K/13KJv8csXb+VRM6+81W/vAAAAAAAAAAAAAAAAAAAAAAAAAAAmIdpO2/yzTyD2Q49dDDqPloUpD8Eev4/Au7iP463gz+3tOg9LyjwPEfEMzwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAowhw+bPsOP31nKz8RzyM/x2zJPlEEbzwAAAAAAAAAAAAAAAAAAAAAAAAAAA==","t":-0.9218010596198365,"s":17.698144575392707},"red":{"w":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACv1ag4bJINPT+fJD4hx/E9BIlxOwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1UaLug9gSz190YM+mc1YPvIkKb6aYRnAPnUxwGREI8CyPD6/9+haPvyiez6nsKI9ucYrvAAAAAAAAAAAAAAAAAAAAADb9Yc8Z6qiP+rqPUAX0itA8yQOvx3kjcDEoq3AJOh2wD1js79fWxJALQE4QGsR+j96zIY+suHBuwAAAAAAAAAAAAAAACSmGz5ikX1AWFKkQB8wtkCYbWY/MTCJwOfPrMBfCXzAsLGSvu8glEC+IMlAksxlQIXHxz/ku0m9AAAAAAAAAAAAAAAA1HfLPZ7SrUB49f5Axc8LQTHAw0Dxjve+TLaewEJnH8DuY5RAsh8RQbjcF0GLarxATfgfQKJvsL0AAAAAAAAAAAAAAAAnlF8+lamtQAjankCktuxAsrS3QLTneT9MW6S/eGAgvhTugkBKbwRB8aLlQAG4mkCg8jhAK/6rvQAAAAAAAAAAAAAAAMi9oD68p3BAnFF8P+dYVUA4Qvk/8HinPU2Omr0ZsKS8jaFnP2njZUBiQ0pAHQvbP/S4MEBq1ku9AAAAAAAAAAAAAAAAmUzvPE+kHEAmAh4+fBbIvxovu7+ZlL++OpTgu2rGsL33rIe/xpa+v5MsGr8Gk+c/LjzDP0LAtbsAAAAAAAAAAAAAAAA7gQW7mOo4vkXJU7wMgUDAGYaEwMnm4r/0LlC+hrJBvwcMTMBN44HArVGNvy0Bbz4LlkI+AAAAAAAAAAAAAAAAAAAAAAAAAAAcg0O/npnpv7SXQr9YomjAlo1FwI9Yt7/FTg3ANJiFwDGfH8DBUyy9zJnwv+RBNTwAAAAAAAAAAAAAAAAAAAAAAAAAAO7GVbwzR/G/3jc6v7rTer/v5HDA6UxzwA6ThMCPDETADQMgPoC6vr/fGa6+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACd4Qb6w1f2/XGdRvQ5Z0r9scI3AYe5xwCkOQr7fLki/+452v+6kRTsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAF1H5b6T/sq/g8SLPpTPIsCrO4e/bUdVPd+YoL99xzQ8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAR2zbOjbmL7+OpBXA7hAcwBmp3r/RXLK/yx50vQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+PQ8PNx0Or0ZYS4/48fTPjeNJT0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGtSIOSw/eTmZ6m44R343uAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==","t":4.118603554051337,"s":54.05285164609705}}};
+  const RES_MODEL = {"v":2,"rank":["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"],"suit":["AAAAAAEBAgMEBAQEBQUGBwgKAAAAAQIGDRUYFQ4JBgYHCAgLAQEBAwoePVdfUzgcDQgICQkMBAECCSNalrnCsolPIQ0JCgoMCQIFFk+i3PDz686QRRcLCwsNCgMIJnfO9v39++29aCUOCwwOBgQKMYrd+////fXOei0QDQ0QBAULMIjb+////fXNeS0RDg8RBQcOLHfN9/7//e+/bCwVERASChYqR3vD8v7//Om3dUcvHhUUIEp4mbXZ9f7//fDSspd2SygZUJjN5O72/P///vry6uDGkVAmhNHz/P7+//////79/PrvyH46pOj9//////////////764Z1Lre3+//////7+/v/////85qZQn+X8///++/b09vv9/v353plIesfu+vv15dnW2Obz+PfrwHY3R4i919nJsK64q7HI19S6hUglIEBmf4N1cpi2lHN4hIBmQiYaEhsnMDQ9YZ28ml8/NzMqHxkXERIUFxwwWH2Ke1UvHhoYFxYXERITFRghMDo9OjAhGBYWFhYX","AQAAAAABAQIDAwMDBAUFBgcKAAAAAQECBAoOCgYFBQUGBwgLAQABAQIFDSIvIQ4HBgYHCAkMAgEBAgQMJFJrTiMNCAgICQoNAwECBAkeT46qiEoeDAoKCgsNAwIDCBhDh8HUu38/Gg4LCwwPAwQHFDh4uuHr3rJyOBgODA0QBAYQL2qt2/H279aoZy8VDg8RBg0mXKHU7vn8+OvRm1koFBASCh5Pk83r+P3+/PbqyI1OJBUUEj2Dw+j3/P7+/vz35r9/QB0WGVSj2/L7/v7+/v7889meUyQYFUWQ0PD7/v7+/v798cyLRiEYDSVcp+D4/v7///343qNcLBoXChMwbLjp+v7//vnotW00HBYWCg0YO37D7fv+/OzCfD8gFxUWCwwQH0mOzfD78cyLSiUZFhUWDA0OEyZYntft1ZpVKhoWFRUWDQ4PERcwaKrMqGIwGxcWFRUWDxAQERMcOnCRbTgdFxUVFRUWEBEREhQWITtOOSAXFRUVFRUWERITFBUVGB8kHhgVFRUVFRUW","AQAAAAEBAQECAgMEBAUFBgcKAgECAwQDAwICAwUHCAgHBwgLBgULERMQCgYFBw0UFxYQCwoMDBkvQUU6JhQOFys/SEIwGw8NHUVzj5WGZDwrQ2yLlo1wQh0RN3q0zNHHqXtlhLLM0squdTMWTp/X6e7p2Lmrwd3u8evUmEYcVKjf8Pb27+Pe5/L5+vTeo0weSZza8Pj7+vf2+Pv9+vHXl0QcM33H6vf9/v79/v799+jAeDMZHFOf2fP8/v7+/v778NOZUCMXDixstub5/f7+/v334a5oLxkWCRU8g8rw/P7+/vrswXw8HRYWCAwdTprY9v3+/fPRkEwjFxUXCQoQKWKt4/n999+lXCsZFRUXCgoMFjZ2vuv357ZuNBwWFRUXCgsMDxxFisvkxYBAHxcWFRUWDA0ODxMlVpm4kE0lGBYVFRUWDQ4PEBEYMF94VisZFhUVFRUWDg8QERIUHTE9LBsWFRUVFRUWEBAREhMUFhseGRYVFRUVFRUWERESExQVFRUWFRUVFRUVFRUW","AQAAAQEBAgMEBAQFBQYGBwgJAAABAQECBQoOCwYFBgcHCAkKAQEBAgIEDiY2JA4HBwcICQoLAwECAgQLKGB/WSUNCAkJCgsMBgIDBAkfV6PFnFEeDAoKCwsNBwMEBxdGlNbt0oxBGAwLCwwOBQQGETeAyvL78MR4NBQNDA0PBAUNKmu67Pz+++mzZSoTDg8QBQofWKjj+v///vnfoFMiEhASCBdFk9j3/v////710otCHRMTEDR8yfL9///////978F1NRkVI2O16vz/////////++asXSgYP5Td+f7//////////vjWij4eW7jw/v////////////3srVUka8j2/v///v79/v////7zvWEnZcHy/f79+PLw8/n9/v3utVsmS53Z8PPr2s3Mz97u9O/TkUUgKl+Xub+vmp+snJ61wreQVysaFilFW2BaZJSwiGBdY1tEKhsXERUbIic0YKK/lVQyKCQeGRcXERITFRsyXYiWgVMsGxcXFhYXEhMUFRklNkNGQTIhGBYWFhYX"],"label":{"me":"fX17eXZybWVcVlBHPVuhp208OkBESE1PT0djf4SAfnx+goiQhWNSW2VtcnZ8enh1cWxlXV93jZKEmtHMmICDh31mZm1qWpLGz8vIxcXHz97TiFFXYGhtcXl3dHFtaGJcaZzH0s3M0MvEwsrRwYZ4hINvY21ua2dkYWN+vs+JXmNmaGlsdnRxb2xpaGVzo8vCjXVvamhmgbu+hISam5N1X1pXVVBIQmCyy4ZmcnRzb2x2dHN1eHh4dXabv7iNe3l4en2MtLF8jqmrl3N5goSHiIqNo87KhWt8g4J+eHx/hYuPk5WPhJm9xsC5trSyr7O7rHybub2ch7bCubS1tri8wK+BkqWrq6eekJegp62wsamVnLanalFNTUtKZKOpfqG+wZ+LsJZjWVtcXV9fV3Kjr7GzraSIi5GWm5+elYqcvb2qpaWlpaaruat8m7a5mYyzkHudoZyVjIBudnN2g4mEfHVxcXN3enx5e5/Fx7Osqqekn6e7rnyRqaqOj7qWcoOHhH91bIzOunVwd3Rwc25ram1ycmx0pMayZUpJSEhHabC0gIaZmoGMw7uVjJCUmZ+qzee0cmxtbGx1cnN0c3BsZXOq1djFv729vb3G0b+DeoWGdnKnzdXU1dbX2tzZuX9laGpucXd3fX15cmxlbJK1v7i0sa+tqqijj2xqcHBrXV5veHl5eXl6eW9nXE9ebHFxeXp8fn14c25pa21sZWRiYWFgX15bW15gYGBcWVdWVVRXWVxeYGBaV2Rwd3p8e3p8fn56dnFpXFNaZWFaWFthZGRkZWVlZWVkY2NiXl9gYGJma3B1eXt9fn18e3p7f358eXRoWFhlW1NUU1hmb3FxcHBwb21sa2ppaWxvcXR2eHp8fn9/fn18enl7f4B/fnltXVtdbXZwYF9ueXp5d3Vzc3R1dnd3d3d4eXt8fX5/gIA=","other":["fnt5dXBpYFlmg5GMgHp2dXR3fIGIg19BOkdwfXhxeZahiHd+jJmKWk5ZZGx6eHZybGVeWXeov768tbe7s6ussLSpelxVZaayoJeUmZqXl5+0z7tvUVdgZ3h2c25qZWFea4eTjoJ/n7uab2puc25ndnFqop+FiYaFhYiOj5nCtG9aXmFkdnRxbm5vb25sbGtmWVWHuJtiS1dreoqajmVrbHqYpKiZiYuQg4J6amxvbmx3dnh8gISFhoeGhoWCbou9vamPfHmQqrWpdldrg5elqotXXY2Zb2mGjYyJhYaKkZmgpKiqq6yrrKmJk72to7CwmYOkwrh/cI+WkpenpI6bsplxi6qvrqqji5GaoqmusrW4uLi4tZOZvo9ffaSof5nDu39qipygmZyzurq8iHWbqamnopp9foOIjpKWmpyeoKGdhZ7CjmpwbG93o7yteIalo5eVp767m7Wyh36Dg4F9dnZ0cnN2en6Bg4aJi4h8pcuYg5eLhpqrr51xgZynsK2luLqDlM3Jo35yb2xpd3VzcG9wcXN1eHp7eXet1aOBk5SXnJ2djXmnu66dpbPGtW5mos+/gWdlZml6eHZzcG1raWlqa2tob6fKnXV9gIKEhYZ8bYGDammevLOJWlNlgoNrY2drb3x7end1cm9tamhmZF9ke4h1ZWdpa2xtbWphW1dUWW13b15UVFlgZWdqbnJ1fn58e3l3dXNxb2xpZGJjY2JfXl9fYGBgX15cW1pZWltbWlxfY2drbnF0d3l/f319fHt6eXd1c3Fua2poaGhoaGhpaWhnZ2dnZmVlZWZnaWtucHJ1d3p7fIB/f35+fn18e3p5d3Z0c3JxcXFxcnJycnJycXFwcHBwcHFydHV3eHp7fX1+gICAgH9/f35+fXx7enp5eHh4eHh4eHh4eHh4eHh3d3d4eHl5ent8fX5+f38=","fXx6dnBnXVdcb4KHhI1lSDYxTpumaEJBQUtTUEpJa52cZVJaZG5jU1RfaHN7eXdya2JaYYSzw7erxLePTUBfusZ7V1tWi73DvLW5w8O6vMfa4axmWWFmZ313cm5nX1lgg7LFvLLGtnxKTWW3wXtoeGaaybOXkIqIiIyRlr/ptGxgZmtvenhwa2dkYXKcv8jAusW9p5qhrcvOnneGcX2Yi5+ura2rq6+eiKuJZmltb25vdnJwcXFtaHKSqJB/pZVvi52mwsOSd5aMUj5VhKa3r4ZmdIx7V1tvdHJ2dnR/hIiLjot8cJGuo564nF1Zb2Wlp26LtKJrgpymnZ6nf1mKu69zi6usopuZi5ulrLCwrZqFm6+4u6iQZ3ytiKimgKzFpGd8joqMnKuysb6sbXeqvL+3rKmGkpyjp6ilkHuOpru/oYNSZrSjsKqErcOhbI2rs6CGnMC1t7mBfZKXm4yCgXFxdHh8f4R6eZqzx822nGNGZ3SurIOhsY1pjZmWnKu0xa2Ww8aTeH16bW5vd3NwbWtocHR7jaTF0bapkVhNb7m1g5ajhXieucK5m5vEqnWb2+GweGNjaWt4dHBrZF5ngqzIz9DMwbGRbJ/G2rV/ho52irSpiIy3zMmSW2GUuJ5rWWRscHNwbWhjY2p3jp2bj4FpX1hfk7Stg251d29naWFZbZWcg2FTWWdtZ15kbXJydXx+fHl0bWhoZ2NeWVNUVllgaGReXmFhYV1aWFZYXV5aWFxjYFheaG90dXF6hYR+enVwbGhlYl9eXl9fYGBgYGBgYWFhYWBfXl5eXmBnamNcY21ydnZxcnyFgnx7eXd0cW5sa2pra2trampra2tra2xsbGtramprcnRoY2t0d3l4dHFzfoeBfn59e3l3dnV0dHR0dHR0c3NzdHR0dHR0dHRzc3h9cmtzeXx+f3+AgYI=","g4KBf317eHRvaWFZW3Wdl2FKTlNWV1ZTTk1PTEVEaaGZYUtUYWljW2JsdHmEgoB+e3h0b2pkXlhilNvQdFhfZmtubmpii7zDu7W6x8S6vMja4qxnXmhxd4OBfnp2cm9tamhmY2iU1spyZ3J5fYOGhHGfz7ugmJOPkJSbpMPstmdZXmRqdXJtaWZkZ2lqbGxraorJwXptcnhxeZCVd4WkjZunp6iprLKnjrePXFdYVlNmY2JlaGtwdXl7fXtzhsHSwL2+v6yBlqiNXEpXgaS2s4tpdIyAYl5obGtoYmxwd36EiY+UmJqbmIeHu8CXi4qJdXWov6l0epalpaWsf1KBurh+iJ6gnZiPjJWhqrG1uby+vry2n462qWBten2CpcTLrHSCkImMnK2ysb+zdXmpuru2r6aNlZ6mrLCytLSzsamUirareKe6v8LFx8Wlc36cq6ORnb23ub2FfZOSjomFhHV2eX2Ag4OJjYyGfnSDvK9tiJeZnKOuspJzkpqTnrC5wqmVwsSPdnNpanl8b2xqamtsb3+VpaOalqnPxZaPlJiaj4udiHmduL+3op/Ap3Kd2t+wfWZmeWt0cGtmYF1kiL3j5dzW2eDc2NXV1dW+kIx+ksa8k5G81tKaX2aZxaV3YGZ6Z3d1cWtkXFx3l6ypoJqTiYWEgoKAfnZxeG5nbmVZcp+rkGlcW1tqbXRocIJte3h1cWtjXGJtc2hcV1JLSktVXFJPVWVkVE9OSUlaYlpRTV5hTU9kfG92iXR9e3l1cGljY2xzZFBIRUFCSmJhSkVSamRPS0pIT2ZoUUdNaHRgW3SCcHWNgn59e3h0b251fIB0ZVZQUVptdGNTVGN3b1pXWWdxfHxyZVpofoGBiX5rboWRf358eXZyeIWGhYB3ZmBufoFwYWp3gYRyYmFkdX1+fXtwY2Nwf4J5bWxtb3w="]}};
+  const VERSION = "test-1";
+  const $ = (id) => document.getElementById(id);
+  const RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"], SUITS = ["♣", "♦", "♥", "♠"];
+  const nm = (c) => SUITS[c & 3] + RANKS[c >> 2];
+  const unb64 = (b64) => { const b = atob(b64), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  const t0 = performance.now(), lines = [];
+  const ts = () => ((performance.now() - t0) / 1000).toFixed(1).padStart(6);
+  function log(msg) {
+    lines.push(`${ts()}s  ${msg}`);
+    if (lines.length > 500) lines.splice(0, lines.length - 500);
+    $("log").textContent = lines.slice(-80).join("\n");
+  }
+  let lrModel = null, rrModel = null;
+  try { lrModel = LocalRead.unpack(LR_MODEL, unb64); } catch (e) { log("讀牌模型載入失敗：" + e); }
+  try { rrModel = ResultRead.unpack(RES_MODEL, unb64); } catch (e) { log("結算模型載入失敗：" + e); }
+
+  // ---------- what this browser can do ----------
+  const supported = !!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === "function");
+  $("support").innerHTML = `<span class="support ${supported ? "ok" : "no"}">${supported ? "這個瀏覽器可以分享螢幕" : "這個瀏覽器不能分享螢幕（iPad 需要 iPadOS 27 以上的 Safari）"}</span><span class="ua"></span>`;
+  $("support").querySelector(".ua").textContent = navigator.userAgent;
+  $("startBtn").disabled = !supported;
+  log(`版本 ${VERSION}；${navigator.userAgent}`);
+  log(`螢幕 ${screen.width}x${screen.height}，視窗 ${innerWidth}x${innerHeight}，像素比 ${devicePixelRatio}，分享螢幕 ${supported ? "支援" : "不支援"}`);
+  document.addEventListener("visibilitychange", () => log(document.hidden ? "這頁到背景了" : "這頁回到前景"));
+  addEventListener("pagehide", () => log("這頁被收起來（pagehide）"));
+  addEventListener("pageshow", () => log("這頁顯示（pageshow）"));
+  addEventListener("resize", () => log(`視窗變成 ${innerWidth}x${innerHeight}`));
+
+  // ---------- sharing and reading ----------
+  const S = { started: 0, frames: 0, changed: 0, reads: 0, ok: 0, hands: new Map(), lists: 0, listsOk: 0, maybe: 0, gaps: [], maxGap: 0, size: "", ms: [], lastWhy: "", read: false };
+  let stream = null, timer = null, lastTick = 0, lastFp = null;
+  const cv = document.createElement("canvas"), g = cv.getContext("2d", { willReadFrequently: true });
+  const sm = document.createElement("canvas"); sm.width = 48; sm.height = 27;
+  const gs = sm.getContext("2d", { willReadFrequently: true });
+  async function start() {
+    if (stream) return;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    } catch (e) { log(`沒有開始分享：${e.name}：${e.message}`); stream = null; render(); return; }
+    const track = stream.getVideoTracks()[0];
+    const st = track && track.getSettings ? track.getSettings() : {};
+    log(`開始分享：${JSON.stringify({ label: track && track.label, width: st.width, height: st.height, frameRate: st.frameRate, displaySurface: st.displaySurface })}`);
+    if (track) {
+      track.addEventListener("ended", () => { log("分享被停止了（系統或你按了停止）"); stop(true); });
+      track.addEventListener("mute", () => log("影像暫停（mute）"));
+      track.addEventListener("unmute", () => log("影像恢復（unmute）"));
+    }
+    const v = $("video");
+    v.srcObject = stream;
+    try { await v.play(); } catch (e) { log("影像播放：" + e.name); }
+    S.started = performance.now(); lastTick = performance.now(); S.read = false; lastFp = null;
+    timer = setInterval(tick, 1000);
+    render();
+  }
+  function stop(byTrack) {
+    if (timer) clearInterval(timer);
+    timer = null;
+    if (stream) { if (!byTrack) stream.getTracks().forEach((t) => t.stop()); stream = null; log("停止分享"); }
+    $("video").srcObject = null;
+    render();
+  }
+  function tick() {
+    const now = performance.now(), gap = (now - lastTick) / 1000;
+    lastTick = now;
+    if (gap > 3) { S.gaps.push(Math.round(gap)); log(`這頁有 ${gap.toFixed(1)} 秒沒有執行（可能在背景）`); }
+    if (gap > S.maxGap) S.maxGap = gap;
+    const v = $("video");
+    if (!v.videoWidth || v.readyState < 2) { render(); return; }
+    const W = v.videoWidth, H = v.videoHeight;
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; S.size = `${W}x${H}`; log(`收到的畫面 ${W}x${H}`); }
+    g.drawImage(v, 0, 0, W, H);
+    S.frames++;
+    // did the picture change since the last second?
+    gs.drawImage(cv, 0, 0, 48, 27);
+    const px = gs.getImageData(0, 0, 48, 27).data, fp = new Uint8Array(48 * 27);
+    for (let i = 0; i < fp.length; i++) fp[i] = (px[4 * i] + px[4 * i + 1] + px[4 * i + 2]) / 3;
+    let diff = 0;
+    if (lastFp) { for (let i = 0; i < fp.length; i++) diff += Math.abs(fp[i] - lastFp[i]); diff /= fp.length; }
+    const changed = !lastFp || diff > 1.5;
+    lastFp = fp;
+    if (changed) S.changed++;
+    if (!changed && S.read) { render(); return; }
+    S.read = true;
+    const im = g.getImageData(0, 0, W, H), r0 = performance.now();
+    let rr = null, lr = null;
+    try { rr = rrModel ? ResultRead.read(im, rrModel) : null; } catch (e) { log("讀結算出錯：" + e); }
+    if (rr && rr.list) {
+      S.lists++; if (rr.ok) S.listsOk++;
+      const txt = rr.ok ? "看到結算清單，讀得清楚" + (rr.me >= 0 ? `（你是第 ${rr.me + 1} 排）` : "") : `看到結算清單，但沒讀清楚（${rr.why}）`;
+      if (txt !== S.lastWhy) { log(txt); S.lastWhy = txt; }
+      $("read").textContent = txt; $("read").className = "read" + (rr.ok ? "" : " miss");
+    } else {
+      if (rr && rr.maybe) S.maybe++;
+      try { lr = lrModel ? LocalRead.read(im, lrModel) : null; } catch (e) { log("讀牌出錯：" + e); }
+      if (lr && lr.ok) {
+        S.ok++;
+        const key = lr.cards.slice().sort((a, b) => a - b).join(",");
+        const txt = lr.cards.slice().sort((a, b) => a - b).map(nm).join(" ");
+        if (!S.hands.has(key)) { S.hands.set(key, txt); log(`讀到 13 張：${txt}`); }
+        S.lastWhy = "";
+        $("read").textContent = "讀到：" + txt; $("read").className = "read";
+      } else {
+        const why = lr ? lr.why || "讀不到" : "讀牌模型沒載入";
+        if (why !== S.lastWhy) { log(`沒讀到牌：${why}`); S.lastWhy = why; }
+        $("read").textContent = "沒讀到牌：" + why; $("read").className = "read miss";
+      }
+    }
+    S.reads++;
+    S.ms.push(Math.round(performance.now() - r0));
+    if (S.ms.length > 200) S.ms.shift();
+    render();
+  }
+  const median = (v) => { if (!v.length) return 0; const s = v.slice().sort((a, b) => a - b); return s[s.length >> 1]; };
+  function render() {
+    const on = !!stream;
+    $("startBtn").hidden = on; $("stopBtn").hidden = !on;
+    if (!on && !S.started) { $("status").innerHTML = "<span>還沒開始</span>"; return; }
+    const secs = S.started ? Math.round((performance.now() - S.started) / 1000) : 0;
+    $("status").innerHTML = [
+      `<span>${on ? "<b>分享中</b>" : "已停止"}・${secs} 秒</span>`,
+      `<span>畫面 <b>${S.size || "-"}</b></span>`,
+      `<span>收到 <b>${S.frames}</b> 次，變化 <b>${S.changed}</b> 次</span>`,
+      `<span>讀到 <b>${S.hands.size}</b> 手不同的牌</span>`,
+      `<span>結算清單 <b>${S.lists}</b> 次</span>`,
+      `<span>讀一次約 <b>${median(S.ms)}</b> 毫秒</span>`,
+      `<span>最久停了 <b>${S.maxGap.toFixed(1)}</b> 秒</span>`,
+    ].join("");
+    if (!on && S.started && $("read").textContent.indexOf("已停止") < 0) { $("read").textContent = "已停止分享"; $("read").className = "read miss"; }
+  }
+  function report() {
+    const head = [
+      `十三支螢幕讀牌測試 ${VERSION}，${new Date().toISOString()}`,
+      `瀏覽器：${navigator.userAgent}`,
+      `分享螢幕：${supported ? "支援" : "不支援"}；畫面 ${S.size || "-"}；收到 ${S.frames} 次、變化 ${S.changed} 次、讀 ${S.reads} 次（讀到 13 張 ${S.ok} 次，不同的牌 ${S.hands.size} 手）`,
+      `結算清單 ${S.lists} 次（讀清楚 ${S.listsOk}），像清單但不完整 ${S.maybe} 次；讀一次約 ${median(S.ms)} 毫秒；最久停了 ${S.maxGap.toFixed(1)} 秒；停過 ${S.gaps.length} 次：${S.gaps.join(", ")}`,
+      "---",
+    ];
+    return head.concat(lines).join("\n");
+  }
+  $("startBtn").onclick = start;
+  $("stopBtn").onclick = () => stop(false);
+  $("copyBtn").onclick = () => {
+    const text = report(), box = $("copyBox");
+    const fallback = () => { box.hidden = false; box.value = text; box.focus(); box.select(); log("沒辦法自動複製：結果在上面的框裡，全選後拷貝"); };
+    try {
+      navigator.clipboard.writeText(text).then(() => { box.hidden = true; $("copyBtn").textContent = "已複製，貼給 Claude"; setTimeout(() => { $("copyBtn").textContent = "複製測試結果"; }, 4000); }, fallback);
+    } catch (e) { fallback(); }
+  };
+  $("frameBtn").onclick = () => {
+    if (!cv.width) { log("還沒有收到畫面"); return; }
+    const k = Math.min(1, 1400 / cv.width), c2 = document.createElement("canvas");
+    c2.width = Math.round(cv.width * k); c2.height = Math.round(cv.height * k);
+    c2.getContext("2d").drawImage(cv, 0, 0, c2.width, c2.height);
+    $("frameImg").src = c2.toDataURL("image/jpeg", 0.8);
+    $("frameImg").hidden = false; $("frameNote").hidden = false;
+    log("顯示目前畫面");
+  };
+  render();
+  window.__c13test = { get S() { return S; }, report, tick };
+})();
+</script>
+</body>
+</html>
